@@ -6,7 +6,7 @@ use byteorder::ByteOrder;
 use byteorder::BigEndian;
 
 /// An encoding of a path in the network
-pub type Label = u64;
+pub type Label = [u8; 8];
 /// An interface identifier, unique to a node.
 pub type Director = u64;
 
@@ -25,30 +25,46 @@ pub enum RoutingDecision {
     Forward(Director),
 }
 
-/// Shift bits to the right, and puts the discarded bits to the right and return them
-fn right_shift_collect(bits: &mut u64, shift: u8) -> u64 {
+/// Shift bits to the right, collects the discarded bits, and puts these
+/// bits at the left.
+/// Returns (the computed new number, collected bits)
+fn right_shift_collect(bits: u64, shift: u8) -> (u64, u64) {
     assert!(shift < 64);
     let mask = (0b1u64 << shift) - 1;
-    let collected_bits = *bits & mask;
-    *bits >>= shift;
-    collected_bits
+    let collected_bits = bits & mask;
+    let new_bits = bits >> shift;
+    (new_bits, collected_bits)
 }
 
 #[test]
 fn test_right_shift_collect() {
-    let mut bits: u64 = 0b0000000000000000000000000_0001_101011_011010_100101101_10111_0100011;
-    assert_eq!(0b0100011, right_shift_collect(&mut bits, 7));
+    let bits: u64 = 0b0000000000000000000000000_0001_101011_011010_100101101_10111_0100011;
+    let (bits, collected) = right_shift_collect(bits, 7);
+    assert_eq!(0b0100011, collected);
     assert_eq!(0b0000000_0000000000000000000000000_0001_101011_011010_100101101_10111, bits);
 
-    assert_eq!(0b10111, right_shift_collect(&mut bits, 5));
+    let (bits, collected) = right_shift_collect(bits, 5);
+    assert_eq!(0b10111, collected);
     assert_eq!(0b00000_0000000_0000000000000000000000000_0001_101011_011010_100101101, bits);
 
-    assert_eq!(0, right_shift_collect(&mut bits, 0));
+    let (bits, collected) = right_shift_collect(bits, 0);
+    assert_eq!(0, collected);
     assert_eq!(0b00000_0000000_0000000000000000000000000_0001_101011_011010_100101101, bits);
 
-    let mut bits: u64 = 0b1111111111111111111111111111111111111111111111111111111111111111;
-    assert_eq!(0b0111111111111111111111111111111111111111111111111111111111111111, right_shift_collect(&mut bits, 63));
+    let bits: u64 = 0b1111111111111111111111111111111111111111111111111111111111111111;
+    let (bits, collected) = right_shift_collect(bits, 63);
+    assert_eq!(0b0111111111111111111111111111111111111111111111111111111111111111, collected);
     assert_eq!(0b1, bits);
+}
+
+pub fn label_from_u64(u: u64) -> Label {
+    let mut label = [0u8; 8];
+    BigEndian::write_u64(&mut label, u);
+    label
+}
+
+pub fn u64_from_label(label: Label) -> u64 {
+    BigEndian::read_u64(&label)
 }
 
 /// Performs a switch operation on the label (using constant director length),
@@ -64,43 +80,54 @@ fn test_right_shift_collect() {
 ///
 /// ```
 /// # use fcp_switching::operation::*;
-/// let mut label: Label = 0b000000000000000000000000000000000_0001_011010_100101101_10111_0100011;
+/// let mut label: Label = label_from_u64(0b000000000000000000000000000000000_0001_011010_100101101_10111_0100011);
 ///
-/// assert_eq!(RoutingDecision::Forward(0b0100011), switch(&mut label, 7, &0b1000000));
-/// assert_eq!(0b1000000_000000000000000000000000000000000_0001_011010_100101101_10111, label);
+/// let (label, decision) = switch(&label, 7, &0b1000000);
+/// assert_eq!(RoutingDecision::Forward(0b0100011), decision);
+/// assert_eq!(0b1000000_000000000000000000000000000000000_0001_011010_100101101_10111, u64_from_label(label));
 ///
-/// assert_eq!(RoutingDecision::Forward(0b10111), switch(&mut label, 5, &0b11001));
-/// assert_eq!(0b11001_1000000_000000000000000000000000000000000_0001_011010_100101101, label);
+/// let (label, decision) = switch(&label, 5, &0b11001);
+/// assert_eq!(RoutingDecision::Forward(0b10111), decision);
+/// assert_eq!(0b11001_1000000_000000000000000000000000000000000_0001_011010_100101101, u64_from_label(label));
 ///
-/// assert_eq!(RoutingDecision::Forward(0b100101101), switch(&mut label, 9, &0b110110011));
-/// assert_eq!(0b110110011_11001_1000000_000000000000000000000000000000000_0001_011010, label);
+/// let (label, decision) = switch(&label, 9, &0b110110011);
+/// assert_eq!(RoutingDecision::Forward(0b100101101), decision);
+/// assert_eq!(0b110110011_11001_1000000_000000000000000000000000000000000_0001_011010, u64_from_label(label));
 ///
-/// assert_eq!(RoutingDecision::Forward(0b011010), switch(&mut label, 6, &0b010101));
-/// assert_eq!(0b010101_110110011_11001_1000000_000000000000000000000000000000000_0001, label);
+/// let (label, decision) = switch(&label, 6, &0b010101);
+/// assert_eq!(RoutingDecision::Forward(0b011010), decision);
+/// assert_eq!(0b010101_110110011_11001_1000000_000000000000000000000000000000000_0001, u64_from_label(label));
 ///
-/// assert_eq!(RoutingDecision::SelfInterface(0b0001), switch(&mut label, 4, &0b0110));
-/// assert_eq!(0b0110_010101_110110011_11001_1000000_000000000000000000000000000000000, label);
+/// let (label, decision) = switch(&label, 4, &0b0110);
+/// assert_eq!(RoutingDecision::SelfInterface(0b0001), decision);
+/// assert_eq!(0b0110_010101_110110011_11001_1000000_000000000000000000000000000000000, u64_from_label(label));
 /// ```
 ///
 /// Supports non-canonical self-interfaces:
 /// 
 /// ```
 /// # use fcp_switching::operation::*;
-/// let mut label: Label = 0b010101_110110011_11001_1000000_0000000000000000000000000000000_110001;
-/// assert_eq!(RoutingDecision::SelfInterface(0b110001), switch(&mut label, 6, &0b100110));
-/// assert_eq!(0b100110_010101_110110011_11001_1000000_0000000000000000000000000000000, label);
+/// let label: Label = label_from_u64(0b010101_110110011_11001_1000000_0000000000000000000000000000000_110001);
+/// let (label, decision) = switch(&label, 6, &0b100110);
+/// assert_eq!(RoutingDecision::SelfInterface(0b110001), decision);
+/// assert_eq!(0b100110_010101_110110011_11001_1000000_0000000000000000000000000000000, u64_from_label(label));
 /// ```
-pub fn switch(label: &mut Label, director_length: u8, reversed_origin_iface: &Director) -> RoutingDecision {
-    let director = right_shift_collect(label, director_length);
+pub fn switch(label: &Label, director_length: u8, reversed_origin_iface: &Director) -> (Label, RoutingDecision) {
+    let label = BigEndian::read_u64(label);
+    let (mut new_label, director) = right_shift_collect(label, director_length);
     assert!(reversed_origin_iface < &(0b1u64 << director_length));
-    *label += reversed_origin_iface << (64 - director_length);
+    new_label += reversed_origin_iface << (64 - director_length);
+
+    let mut new_label_arr = [0u8; 8];
+    BigEndian::write_u64(&mut new_label_arr, new_label);
+
     if director & 0b1111 == 0b0001 {
         // If it is a self-interface director, as defined by
         // https://github.com/cjdelisle/cjdns/blob/cjdns-v17.4/doc/Whitepaper.md#self-interface-director
-        RoutingDecision::SelfInterface(director)
+        (new_label_arr, RoutingDecision::SelfInterface(director))
     }
     else {
-        RoutingDecision::Forward(director)
+        (new_label_arr, RoutingDecision::Forward(director))
     }
 }
 
@@ -147,19 +174,17 @@ const BYTE_REVERSE_TABLE: [u8; 256] = [
 ///
 /// ```
 /// # use fcp_switching::operation::*;
-/// let label: Label = 0b110110011_11001_1000000_000000000000000000000000000_0001_101011_011010;
-/// let rev_label = reverse_label(&label);
-/// println!("{:b}", label);
+/// let label: Label = label_from_u64(0b110110011_11001_1000000_000000000000000000000000000_0001_101011_011010);
+/// let rev_label = u64_from_label(reverse_label(&label));
+/// println!("{:b}", u64_from_label(label));
 /// println!("{:b}", rev_label);
 /// assert_eq!(0b010110_110101_1000_000000000000000000000000000_0000001_10011_110011011, rev_label);
 /// ```
 pub fn reverse_label(label: &Label) -> Label {
-    let mut old_bytes = [0u8; 8];
-    let mut new_bytes = [0u8; 8];
-    BigEndian::write_u64(&mut old_bytes, *label);
+    let mut new_label = [0u8; 8];
     for i in 0..8 {
-        new_bytes[i] = BYTE_REVERSE_TABLE[old_bytes[7-i] as usize];
+        new_label[i] = BYTE_REVERSE_TABLE[label[7-i] as usize];
     }
-    BigEndian::read_u64(&new_bytes)
+    new_label
 }
 
