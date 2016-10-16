@@ -174,17 +174,24 @@ const BYTE_REVERSE_TABLE: [u8; 256] = [
 ///
 /// ```
 /// # use fcp_switching::operation::*;
-/// let label: Label = label_from_u64(0b110110011_11001_1000000_000000000000000000000000000_0001_101011_011010);
-/// let rev_label = u64_from_label(reverse_label(&label));
+/// let mut label: Label = label_from_u64(0b110110011_11001_1000000_000000000000000000000000000_0001_101011_011010);
 /// println!("{:b}", u64_from_label(label));
-/// println!("{:b}", rev_label);
-/// assert_eq!(0b010110_110101_1000_000000000000000000000000000_0000001_10011_110011011, rev_label);
+/// reverse_label(&mut label);
+/// println!("{:b}", u64_from_label(label));
+/// assert_eq!(0b010110_110101_1000_000000000000000000000000000_0000001_10011_110011011, u64_from_label(label));
 /// ```
-pub fn reverse_label(label: &Label) -> Label {
+pub fn reverse_label(label: &mut Label) {
+    /* TODO: compare performance with non-inplace version:
     let mut new_label = [0u8; 8];
     for i in 0..8 {
         new_label[i] = BYTE_REVERSE_TABLE[label[7-i] as usize];
     }
-    new_label
+    label.copy_from_slice(&new_label);
+    */
+    for i in 0..4 {
+        let tmp = BYTE_REVERSE_TABLE[label[7-i] as usize];
+        label[7-i] = BYTE_REVERSE_TABLE[label[i] as usize];
+        label[i] = tmp;
+    }
 }
 
