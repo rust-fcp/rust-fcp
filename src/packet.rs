@@ -2,27 +2,64 @@
 //! used by the Switch, as defined by
 //! https://github.com/cjdelisle/cjdns/blob/cjdns-v17.4/doc/Whitepaper.md#in-memory-representation
 
+use byteorder::BigEndian;
+use byteorder::ByteOrder;
+
 use operation::{switch, reverse_label, Director, RoutingDecision, Label};
 
+#[derive(Debug)]
 pub enum PacketType {
     Opaque,
     SwitchControlMessage,
 }
+
+#[derive(Debug)]
+pub enum Payload {
+    CryptoAuthHandshake(Vec<u8>),
+    Control(Vec<u8>),
+    Other(u32, Vec<u8>), // First argument is the session handle
+}
+
+
 
 pub struct SwitchPacket {
     pub raw: Vec<u8>,
 }
 
 impl SwitchPacket {
-    pub fn new(route_label: &[u8; 8], type_: &PacketType, mut payload: Vec<u8>) -> SwitchPacket {
-        let mut raw = Vec::with_capacity(12 + payload.len());
-        raw.resize(12, 0);
+    pub fn new(route_label: &[u8; 8], type_: &PacketType, payload: Payload) -> SwitchPacket {
+        let payload_length = match payload {
+            Payload::CryptoAuthHandshake(ref msg) => msg.len(),
+            Payload::Control(ref msg) => msg.len(),
+            Payload::Other(_, ref msg) => 4 + msg.len(),
+        };
+        let mut raw = Vec::with_capacity(12 + payload_length);
+        raw.resize(16, 0);
         raw[0..8].copy_from_slice(route_label);
         raw[8] = match *type_ {
             PacketType::Opaque => 0u8,
             PacketType::SwitchControlMessage => 1u8,
         };
-        raw.append(&mut payload);
+        match payload {
+            Payload::CryptoAuthHandshake(mut msg) => {
+                let session_state = BigEndian::read_u32(&msg[0..4]);
+                assert!(session_state < 4);
+                assert!(session_state != 0xffffffff);
+                raw.append(&mut msg);
+            },
+            Payload::Control(mut msg) => {
+                raw.append(&mut vec![0xff, 0xff, 0xff, 0xff]);
+                raw.append(&mut msg);
+            },
+            Payload::Other(session_handle, mut msg) => {
+                assert!(session_handle >= 4);
+                assert!(session_handle != 0xffffffff);
+                let mut raw_handle = vec![0u8; 4];
+                BigEndian::write_u32(&mut raw_handle, session_handle);
+                raw.append(&mut raw_handle);
+                raw.append(&mut msg);
+            },
+        }
         SwitchPacket { raw: raw }
     }
 
@@ -43,9 +80,25 @@ impl SwitchPacket {
         label
     }
 
+    pub fn derivation(&self) -> [u8; 2] {
+        let mut d = [0u8; 2];
+        d.copy_from_slice(&self.raw[8..10]);
+        d
+    }
+
+    pub fn additional(&self) -> [u8; 2] {
+        let mut a = [0u8; 2];
+        a.copy_from_slice(&self.raw[10..12]);
+        a
+    }
+
     /// Returns a reference to the content of the packet.
-    pub fn payload(&self) -> &[u8] {
-        &self.raw[12..]
+    pub fn payload(&self) -> Payload {
+        match BigEndian::read_u32(&self.raw[12..16]) {
+            0 | 1 | 2 | 3 => Payload::CryptoAuthHandshake(self.raw[12..].to_vec()),
+            0xffffffff => Payload::Control(self.raw[16..].to_vec()),
+            handle => Payload::Other(handle, self.raw[16..].to_vec()),
+        }
     }
 
     pub fn switch(&mut self, director_length: u8, reversed_origin_iface: &Director) -> RoutingDecision {
