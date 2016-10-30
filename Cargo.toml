@@ -9,3 +9,4 @@ hex = "~0.2.0"
 
 [dev-dependencies]
 fcp_cryptoauth = { git = "https://github.com/rust-fcp/rust-fcp-cryptoauth.git" }
+rand = "*"
