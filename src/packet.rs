@@ -23,14 +23,14 @@ pub enum Payload {
 
 
 
+#[derive(Debug)]
 pub struct SwitchPacket {
     pub raw: Vec<u8>,
 }
 
 impl SwitchPacket {
     pub fn new(route_label: &[u8; 8], type_: &PacketType, payload: Payload) -> SwitchPacket {
-        let mut raw = Vec::with_capacity(12);
-        raw.resize(16, 0);
+        let mut raw = vec![0u8; 12];
         raw[0..8].copy_from_slice(route_label);
         raw[8] = match *type_ {
             PacketType::Opaque => 0u8,
