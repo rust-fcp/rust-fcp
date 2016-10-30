@@ -6,6 +6,7 @@ use byteorder::BigEndian;
 use byteorder::ByteOrder;
 
 use operation::{switch, reverse_label, Director, RoutingDecision, Label};
+use control::ControlPacket;
 
 #[derive(Debug)]
 pub enum PacketType {
@@ -16,7 +17,7 @@ pub enum PacketType {
 #[derive(Debug)]
 pub enum Payload {
     CryptoAuthHandshake(Vec<u8>),
-    Control(Vec<u8>),
+    Control(ControlPacket),
     Other(u32, Vec<u8>), // First argument is the session handle
 }
 
@@ -28,12 +29,7 @@ pub struct SwitchPacket {
 
 impl SwitchPacket {
     pub fn new(route_label: &[u8; 8], type_: &PacketType, payload: Payload) -> SwitchPacket {
-        let payload_length = match payload {
-            Payload::CryptoAuthHandshake(ref msg) => msg.len(),
-            Payload::Control(ref msg) => msg.len(),
-            Payload::Other(_, ref msg) => 4 + msg.len(),
-        };
-        let mut raw = Vec::with_capacity(12 + payload_length);
+        let mut raw = Vec::with_capacity(12);
         raw.resize(16, 0);
         raw[0..8].copy_from_slice(route_label);
         raw[8] = match *type_ {
@@ -49,7 +45,7 @@ impl SwitchPacket {
             },
             Payload::Control(mut msg) => {
                 raw.append(&mut vec![0xff, 0xff, 0xff, 0xff]);
-                raw.append(&mut msg);
+                raw.append(&mut msg.encode());
             },
             Payload::Other(session_handle, mut msg) => {
                 assert!(session_handle >= 4);
@@ -93,11 +89,11 @@ impl SwitchPacket {
     }
 
     /// Returns a reference to the content of the packet.
-    pub fn payload(&self) -> Payload {
+    pub fn payload(&self) -> Option<Payload> {
         match BigEndian::read_u32(&self.raw[12..16]) {
-            0 | 1 | 2 | 3 => Payload::CryptoAuthHandshake(self.raw[12..].to_vec()),
-            0xffffffff => Payload::Control(self.raw[16..].to_vec()),
-            handle => Payload::Other(handle, self.raw[16..].to_vec()),
+            0 | 1 | 2 | 3 => Some(Payload::CryptoAuthHandshake(self.raw[12..].to_vec())),
+            0xffffffff => ControlPacket::decode(&self.raw[16..].to_vec()).map(Payload::Control),
+            handle => Some(Payload::Other(handle, self.raw[16..].to_vec())),
         }
     }
 

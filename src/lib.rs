@@ -5,8 +5,8 @@ extern crate byteorder;
 extern crate fcp_cryptoauth;
 
 pub mod operation;
-pub mod packet;
 pub mod control;
+pub mod packet;
 
 #[cfg(test)]
 mod tests {
