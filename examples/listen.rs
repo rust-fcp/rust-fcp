@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use fcp_cryptoauth::wrapper::*;
 
 use fcp_switching::packet::{SwitchPacket, PacketType, Payload};
-use fcp_switching::operation::{RoutingDecision, reverse_label};
+use fcp_switching::operation::RoutingDecision;
 use fcp_switching::control::ControlPacket;
 
 use hex::ToHex;
@@ -57,13 +57,8 @@ pub fn main() {
                     match switch_packet.payload() {
                         Some(Payload::Control(ControlPacket::Ping { opaque_data, .. })) => {
                             let control_response = ControlPacket::Pong { version: 17, opaque_data: opaque_data };
-                            let mut label_response = switch_packet.label();
-                            println!("{}", label_response.to_vec().to_hex());
-                            reverse_label(&mut label_response);
-                            println!("{}", label_response.to_vec().to_hex());
-                            let mut packet_response = SwitchPacket::new(&label_response, &PacketType::Opaque, Payload::Control(control_response));
+                            let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, Payload::Control(control_response)).unwrap();
                             packet_response.switch(4, &0b1000);
-                            println!("{}", packet_response.label().to_vec().to_hex());
                             println!("Sending Pong SwitchPacket: {}", packet_response.raw.to_hex());
                             for packet in conn.wrap_message(&packet_response.raw) {
                                 sock.send_to(&packet, dest).unwrap();
@@ -71,11 +66,7 @@ pub fn main() {
 
                             if rand::thread_rng().next_u32() > 0x7fffffff {
                                 let ping = ControlPacket::Ping { version: 17, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
-                                let mut label_response = switch_packet.label();
-                                println!("{}", label_response.to_vec().to_hex());
-                                reverse_label(&mut label_response);
-                                println!("{}", label_response.to_vec().to_hex());
-                                let mut packet_response = SwitchPacket::new(&label_response, &PacketType::Opaque, Payload::Control(ping));
+                                let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, Payload::Control(ping)).unwrap();
                                 packet_response.switch(4, &0b1000);
                                 println!("{}", packet_response.label().to_vec().to_hex());
                                 println!("Sending Ping SwitchPacket: {}", packet_response.raw.to_hex());

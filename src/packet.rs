@@ -43,7 +43,7 @@ impl SwitchPacket {
                 assert!(session_state != 0xffffffff);
                 raw.append(&mut msg);
             },
-            Payload::Control(mut msg) => {
+            Payload::Control(msg) => {
                 raw.append(&mut vec![0xff, 0xff, 0xff, 0xff]);
                 raw.append(&mut msg.encode());
             },
@@ -57,6 +57,21 @@ impl SwitchPacket {
             },
         }
         SwitchPacket { raw: raw }
+    }
+
+    /// Returns a new packet, constructed as a reply of a received one.
+    pub fn new_reply(received: &SwitchPacket, type_: &PacketType, payload: Payload) -> Option<SwitchPacket> {
+        match received.packet_type() {
+            Ok(PacketType::SwitchControlMessage) => {
+                // Should not reply to these
+                None
+            }
+            _ => {
+                let mut response_label = received.label();
+                reverse_label(&mut response_label);
+                Some(SwitchPacket::new(&response_label, type_, payload))
+            }
+        }
     }
 
     /// Returns the type of the packet. Errors with the type number if
@@ -110,4 +125,34 @@ impl SwitchPacket {
         self.raw[0..8].copy_from_slice(&label);
     }
 
+}
+
+#[cfg(test)]
+mod test {
+    use hex::FromHex;
+    use super::*;
+    use super::super::operation::RoutingDecision;
+    use super::super::control::ControlPacket;
+
+    #[test]
+    fn switch_and_reply() {
+        let mut received = SwitchPacket { raw: Vec::from_hex("800000000000000100440000ffffffff9986000309f9110200000011467c6febbde26264a38cd12e").unwrap() };
+        let decision = received.switch(4, &0b1100);
+        let opaque_data = match decision {
+            RoutingDecision::SelfInterface(_) => {
+                match received.payload() {
+                    Some(Payload::Control(ControlPacket::Ping { opaque_data, .. })) => {
+                        opaque_data
+                    },
+                    _ => panic!("parsed as non-Ping."),
+                }
+            }
+            _ => panic!("routed to non-self interface."),
+        };
+        let control_response = ControlPacket::Pong { version: 17, opaque_data: opaque_data };
+        let mut response = SwitchPacket::new_reply(&received, &PacketType::Opaque, Payload::Control(control_response)).unwrap();
+        let decision = response.switch(4, &0b1000);
+        assert_eq!(decision, RoutingDecision::Forward(0b0011));
+        assert_eq!(response.raw, Vec::from_hex("800000000000000100000000ffffffff33b000049d74e35b00000011467c6febbde26264a38cd12e").unwrap());
+    }
 }

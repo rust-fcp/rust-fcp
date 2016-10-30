@@ -155,17 +155,6 @@ impl ControlPacket {
         Some(res)
     }
 
-    /// Return the magic number of this type of packet.
-    fn type_number(&self) -> u16 {
-        match *self {
-            ControlPacket::Error { ..} => 2,
-            ControlPacket::Ping { .. } => 3,
-            ControlPacket::Pong { .. } => 4,
-            ControlPacket::KeyPing { .. } => 5,
-            ControlPacket::KeyPong { .. } => 6,
-        }
-    }
-
     fn checksum(raw: &[u8]) -> u16 {
         let mut sum = 0u32;
         let length = raw.len();
@@ -240,7 +229,7 @@ mod test {
     //! From cjd's tests:
     //! https://github.com/cjdelisle/cjdnsctrl/blob/ba4a953e0484fb3e4d9b7d3a1463c91b43e4aa63/test.js
     use super::*;
-    use hex::{ToHex, FromHex};
+    use hex::FromHex;
 
     #[test]
     fn ping() {
