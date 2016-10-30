@@ -89,16 +89,28 @@ impl ControlPacket {
         let checksum = BigEndian::read_u16(&raw[0..2]); // TODO: check checksum
         let type_ = BigEndian::read_u16(&raw[2..4]);
         match type_ {
-            2 => unimplemented!(), // TODO
+            2 => if raw.len() < 8 { return None },
             3 | 4 => if raw.len() < 18 { return None }, // PING or PONG
             5 | 6 => if raw.len() < 52 { return None }, // KEYPING or KEYPONG
             _ => return None // unknown type
         }
 
-        let magic = BigEndian::read_u32(&raw[4..8]);
-        let version = BigEndian::read_u32(&raw[8..12]);
         let res = match type_ {
+            2 => {
+                let type_number = BigEndian::read_u32(&raw[4..8]);
+                match ErrorType::new(type_number) {
+                    Some(type_) => {
+                        ControlPacket::Error {
+                            type_: type_,
+                            cause: raw[8..].to_vec(),
+                        }
+                    }
+                    None => return None,
+                }
+            },
             3 => {
+                let magic = BigEndian::read_u32(&raw[4..8]);
+                let version = BigEndian::read_u32(&raw[8..12]);
                 assert_eq!(magic, PING_MAGIC);
                 let opaque_data = raw[12..].to_vec();
                 ControlPacket::Ping {
@@ -107,6 +119,8 @@ impl ControlPacket {
                 }
             },
             4 => {
+                let magic = BigEndian::read_u32(&raw[4..8]);
+                let version = BigEndian::read_u32(&raw[8..12]);
                 assert_eq!(magic, PONG_MAGIC);
                 let opaque_data = raw[12..].to_vec();
                 ControlPacket::Pong {
@@ -115,6 +129,8 @@ impl ControlPacket {
                 }
             },
             5 => {
+                let magic = BigEndian::read_u32(&raw[4..8]);
+                let version = BigEndian::read_u32(&raw[8..12]);
                 assert_eq!(magic, KEYPING_MAGIC);
                 let opaque_data = raw[56..].to_vec();
                 ControlPacket::KeyPing {
@@ -124,6 +140,8 @@ impl ControlPacket {
                 }
             },
             6 => {
+                let magic = BigEndian::read_u32(&raw[4..8]);
+                let version = BigEndian::read_u32(&raw[8..12]);
                 assert_eq!(magic, KEYPONG_MAGIC);
                 let opaque_data = raw[56..].to_vec();
                 ControlPacket::KeyPong {
@@ -258,5 +276,15 @@ mod test {
         let msg = ControlPacket::KeyPong { version: 18, opaque_data: vec![], key: key };
         assert_eq!(msg.encode(), raw);
         assert_eq!(ControlPacket::decode(&raw), Some(msg));
+    }
+
+    #[test]
+    fn error() {
+        let raw = Vec::from_hex("bce300020000000a62c1d23a648114010379000000012d7c000006c378e071c46aefad3aa295fff396371d10678e9833807de083a4a40da39bf0f68f15c4380afbe92405196242a74bb304a8285088579f94fb01867be2171aa8d2c7b54198a89bbdb80c668e9c05").unwrap();
+        let msg = ControlPacket::decode(&raw).unwrap();
+        match msg {
+            ControlPacket::Error { type_, .. } => assert_eq!(type_, ErrorType::ReturnPathInvalid),
+            _ => assert!(false),
+        }
     }
 }
