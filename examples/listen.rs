@@ -15,6 +15,19 @@ use fcp_switching::control::ControlPacket;
 use hex::ToHex;
 use rand::Rng;
 
+fn random_send_ping<PeerId: Clone>(conn: &mut Wrapper<PeerId>, sock: &UdpSocket, dest: &SocketAddr, switch_packet: &SwitchPacket) {
+    if rand::thread_rng().next_u32() > 0x7fffffff {
+        let ping = ControlPacket::Ping { version: 17, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
+        let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, Payload::Control(ping)).unwrap();
+        packet_response.switch(4, &0b1000);
+        println!("{}", packet_response.label().to_vec().to_hex());
+        println!("Sending Ping SwitchPacket: {}", packet_response.raw.to_hex());
+        for packet in conn.wrap_message(&packet_response.raw) {
+            sock.send_to(&packet, dest).unwrap();
+        }
+    }
+}
+
 pub fn main() {
     fcp_cryptoauth::init();
 
@@ -35,7 +48,9 @@ pub fn main() {
     let dest = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 54321);
 
     let mut conn = Wrapper::new_outgoing_connection(
-            my_pk, my_sk, their_pk, credentials, Some(allowed_peers), "my peer");
+            my_pk, my_sk.clone(), their_pk, credentials, Some(allowed_peers.clone()), "my peer");
+
+    let mut inner_conn: Option<Wrapper<()>> = None;
 
 
     loop {
@@ -50,7 +65,7 @@ pub fn main() {
         println!("Received packet: {}", buf.to_hex());
         for message in conn.unwrap_message(buf).unwrap() {
             let mut switch_packet = SwitchPacket { raw: message };
-            println!("Received switch packet: {}. Type: {:?}, Label: {}, derivation: {}, additional: {}, payload: {:?}", switch_packet.raw.to_hex(), switch_packet.packet_type(), switch_packet.label().to_hex(), switch_packet.derivation().to_vec().to_hex(), switch_packet.additional().to_vec().to_hex(), switch_packet.payload());
+            println!("Received switch packet: {}. Type: {:?}, Label: {}, payload: {:?}", switch_packet.raw.to_hex(), switch_packet.packet_type(), switch_packet.label().to_hex(), switch_packet.payload());
             let decision = switch_packet.switch(4, &0b1100);
             match decision {
                 RoutingDecision::SelfInterface(_) => {
@@ -64,30 +79,43 @@ pub fn main() {
                                 sock.send_to(&packet, dest).unwrap();
                             }
 
-                            if rand::thread_rng().next_u32() > 0x7fffffff {
-                                let ping = ControlPacket::Ping { version: 17, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
-                                let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, Payload::Control(ping)).unwrap();
-                                packet_response.switch(4, &0b1000);
-                                println!("{}", packet_response.label().to_vec().to_hex());
-                                println!("Sending Ping SwitchPacket: {}", packet_response.raw.to_hex());
-                                for packet in conn.wrap_message(&packet_response.raw) {
-                                    sock.send_to(&packet, dest).unwrap();
-                                }
-                            }
+                            random_send_ping(&mut conn, &sock, &dest, &switch_packet);
                         },
                         Some(Payload::Control(ControlPacket::Pong { opaque_data, .. })) => {
                             assert_eq!(opaque_data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
                             println!("Received pong.");
                         },
-                        Some(Payload::CryptoAuthHandshake(_)) => {
-                            println!("Received CA handshake, ending.");
-                            return
+                        Some(Payload::CryptoAuthHandshake(handshake)) => {
+                            if !inner_conn.is_some() {
+                                let (new_inner_conn, inner_packet) = Wrapper::new_incoming_connection(my_pk, my_sk.clone(), Credentials::None, None, handshake.clone()).unwrap();
+                                inner_conn = Some(new_inner_conn);
+                                println!("Received CA handshake, containing: {}", inner_packet.to_hex());
+                            };
+                            let mut inner_conn2 = inner_conn.unwrap();
+                            match inner_conn2.unwrap_message(handshake) {
+                                Ok(inner_packets) => {
+                                    let inner_packet = inner_packets.get(0).unwrap().clone();
+                                    for packet_response in inner_conn2.upkeep() {
+                                        let mut switch_packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, Payload::CryptoAuthHandshake(packet_response)).unwrap();
+                                        assert_eq!(switch_packet_response.switch(4, &0b0001), RoutingDecision::Forward(0b0011));
+                                        println!("Sending switch packet: {}", switch_packet_response.raw.to_hex());
+                                        for packet in conn.wrap_message(&switch_packet_response.raw) {
+                                            sock.send_to(&packet, dest).unwrap();
+                                        }
+                                    }
+                                    println!("Received CA handshake, containing: {}", inner_packet.to_hex());
+                                },
+                                Err(e) => println!("CA error: {:?}", e),
+                            }
+                            inner_conn = Some(inner_conn2);
+                            random_send_ping(&mut conn, &sock, &dest, &switch_packet);
                         },
                         _ => panic!("Can only handle Pings, Pongs, and CA handshake."),
                     }
                 },
-                _ => panic!("Can only route to self interface."),
+                RoutingDecision::Forward(director) => panic!(format!("Can only route to self interface, but switch wanted to forward to director {}.", director)),
             }
         }
     }
 }
+
