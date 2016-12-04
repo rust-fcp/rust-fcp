@@ -91,13 +91,23 @@ impl SwitchPacket {
         label
     }
 
-    pub fn derivation(&self) -> [u8; 2] {
-        let mut d = [0u8; 2];
-        d.copy_from_slice(&self.raw[8..10]);
-        d
+    pub fn congest(&self) -> u8 {
+        self.raw[8] >> 1
     }
 
-    pub fn additional(&self) -> [u8; 2] {
+    pub fn suppress_errors(&self) -> bool {
+        self.raw[8] & 0b00000001 == 1
+    }
+
+    pub fn version(&self) -> u8 {
+        self.raw[9] >> 6
+    }
+
+    pub fn label_shift(&self) -> u8 {
+        self.raw[9] & 0b00111111
+    }
+
+    pub fn penalty(&self) -> [u8; 2] {
         let mut a = [0u8; 2];
         a.copy_from_slice(&self.raw[10..12]);
         a
