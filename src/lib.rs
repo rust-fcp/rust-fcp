@@ -6,7 +6,7 @@ extern crate fcp_cryptoauth;
 
 pub mod operation;
 pub mod control;
-pub mod packet;
+pub mod switch_packet;
 
 #[cfg(test)]
 mod tests {
