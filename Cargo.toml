@@ -5,6 +5,8 @@ authors = ["Valentin Lorentz <progval+git@progval.net>"]
 
 [dependencies]
 byteorder = "~0.5.3"
+bencode = { git = "https://github.com/arjantop/rust-bencode.git" }
+rustc-serialize = "^0.3"
 hex = "~0.2.0"
 
 [dev-dependencies]
