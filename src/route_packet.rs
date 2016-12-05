@@ -5,6 +5,7 @@ use bencode;
 #[derive(Eq)]
 #[derive(PartialEq)]
 pub enum RoutePacket {
+    GetPeers { transaction_id: String },
     FindNode { target_address: String, transaction_id: String },
     Nodes { nodes: String, transaction_id: String },
 }
@@ -24,6 +25,10 @@ impl Decodable for RoutePacket {
             match query_res {
                 Ok(query) => {
                     match query.as_ref() {
+                        "gp" => {
+                            let transaction_id = try!(d.read_struct_field("txid", 1, D::read_str));
+                            Ok(RoutePacket::GetPeers { transaction_id: transaction_id })
+                        },
                         "fn" => {
                             let target_address = try!(d.read_struct_field("tar", 0, D::read_str));
                             let transaction_id = try!(d.read_struct_field("txid", 1, D::read_str));
