@@ -1,15 +1,18 @@
 /// https://github.com/cjdelisle/cjdns/blob/cjdns-v18/wire/DataHeader.h
 
+use std::fmt;
+
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 
 use route_packet;
 
+#[derive(Debug, Clone)]
 pub enum Payload {
     RoutePacket(route_packet::RoutePacket),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DataPacket {
     pub raw: Vec<u8>,
 }
@@ -28,7 +31,7 @@ impl DataPacket {
     }
 
     pub fn content_type(&self) -> u16 {
-        BigEndian::read_u16(&self.raw[2..3])
+        BigEndian::read_u16(&self.raw[2..4])
     }
 
     pub fn payload(self) -> Result<Payload, ()> {
@@ -42,5 +45,11 @@ impl DataPacket {
             },
             _ => unimplemented!()
         }
+    }
+}
+
+impl fmt::Display for DataPacket {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "DataPacket(version={}, content_type={}, payload={:?})", self.version(), self.content_type(), self.clone().payload())
     }
 }

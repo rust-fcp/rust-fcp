@@ -16,6 +16,7 @@ use fcp_switching::switch_packet::{SwitchPacket, PacketType, Payload};
 use fcp_switching::operation::RoutingDecision;
 use fcp_switching::control::ControlPacket;
 use fcp_switching::route_packet::RoutePacket;
+use fcp_switching::data_packet::DataPacket;
 
 use hex::ToHex;
 use rand::Rng;
@@ -109,7 +110,7 @@ pub fn main() {
                                         }
                                     }
                                     println!("Received CA handshake, containing: {}", inner_packet.to_hex());
-                                    println!("ie: session {} and route packet {:?}", BigEndian::read_u64(&inner_packet[0..8]), RoutePacket::decode(&inner_packet[8..]).unwrap());
+                                    println!("ie: session {} and data packet {}", BigEndian::read_u32(&inner_packet[0..4]), DataPacket { raw: inner_packet[4..].to_vec() });
                                 },
                                 Err(e) => println!("CA error: {:?}", e),
                             }
