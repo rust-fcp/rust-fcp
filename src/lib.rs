@@ -1,7 +1,6 @@
 extern crate hex;
-extern crate bencode;
 extern crate byteorder;
-extern crate rustc_serialize;
+extern crate simple_bencode;
 
 #[cfg(test)]
 extern crate fcp_cryptoauth;

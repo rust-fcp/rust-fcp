@@ -1,104 +1,96 @@
-use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
-use bencode;
+use std::collections::HashMap;
+use std::string::FromUtf8Error;
+
+use simple_bencode;
+use simple_bencode::Value as BValue;
+use simple_bencode::decoding_helpers::HelperDecodeError;
 
 #[derive(Debug)]
 #[derive(Eq)]
 #[derive(PartialEq)]
+#[derive(Clone)]
 pub enum RoutePacket {
-    GetPeers { transaction_id: String },
-    FindNode { target_address: String, transaction_id: String },
-    Nodes { nodes: String, transaction_id: String },
+    GetPeers { transaction_id: Vec<u8> },
+    FindNode { target_address: String, transaction_id: Vec<u8> },
+    Nodes { nodes: String, transaction_id: Vec<u8> },
+}
+
+pub enum DecodeError {
+    BencodeDecodeError(simple_bencode::DecodeError),
+    BadType(String),
+    MissingKey(String),
+    UnicodeDecodeError(FromUtf8Error),
 }
 
 impl RoutePacket {
-    pub fn new_from_slice(v: &[u8]) -> Result<RoutePacket, <bencode::Decoder as Decoder>::Error> {
-        let mut bencode = bencode::from_buffer(v).unwrap();
-        let mut decoder = bencode::Decoder::new(&mut bencode);
-        RoutePacket::decode(&mut decoder)
-    }
-}
-
-impl Decodable for RoutePacket {
-    fn decode<D: Decoder>(d: &mut D) -> Result<RoutePacket, D::Error> {
-        d.read_struct("RoutePacket", 3, |d| {
-            let query_res = d.read_struct_field("q", 0, D::read_str);
-            match query_res {
-                Ok(query) => {
-                    match query.as_ref() {
-                        "gp" => {
-                            let transaction_id = try!(d.read_struct_field("txid", 1, D::read_str));
-                            Ok(RoutePacket::GetPeers { transaction_id: transaction_id })
-                        },
-                        "fn" => {
-                            let target_address = try!(d.read_struct_field("tar", 0, D::read_str));
-                            let transaction_id = try!(d.read_struct_field("txid", 1, D::read_str));
-                            Ok(RoutePacket::FindNode { target_address: target_address, transaction_id: transaction_id })
-                        },
-                        _ => Err(d.error(&format!("Unknown query type: {}", query))),
+    pub fn decode(v: &[u8]) -> Result<RoutePacket, HelperDecodeError> {
+        let bvalue = simple_bencode::decode(v);
+        let mut map = match bvalue {
+            Ok(BValue::Dictionary(map)) => map,
+            Ok(v) => return Err(HelperDecodeError::BadType(format!("Expected dict at root, got: {:?}", v))),
+            Err(e) => return Err(HelperDecodeError::BencodeDecodeError(e)),
+        };
+        let transaction_id = try!(simple_bencode::decoding_helpers::pop_value_bytestring(&mut map, "txid".to_owned()));
+        match simple_bencode::decoding_helpers::pop_value_utf8_string(&mut map, "q".to_owned()) {
+            Err(HelperDecodeError::MissingKey(_)) => { // Answer to a query
+                let nodes = try!(simple_bencode::decoding_helpers::pop_value_utf8_string(&mut map, "n".to_owned()));
+                Ok(RoutePacket::Nodes { nodes: nodes, transaction_id: transaction_id })
+            },
+            Err(e) => Err(e),
+            Ok(query_type) => {
+                match query_type.as_ref() {
+                    "gp" => {
+                        Ok(RoutePacket::GetPeers { transaction_id: transaction_id })
+                    },
+                    "fn" => {
+                        let target_address = try!(simple_bencode::decoding_helpers::pop_value_utf8_string(&mut map, "tar".to_owned()));
+                        Ok(RoutePacket::FindNode { target_address: target_address, transaction_id: transaction_id })
                     }
-                },
-                Err(_) => { // 'q' is not given (or not readable, TODO: fix this)
-                    let nodes = try!(d.read_struct_field("n", 0, D::read_str));
-                    let transaction_id = try!(d.read_struct_field("txid", 1, D::read_str));
-                    Ok(RoutePacket::Nodes { nodes: nodes, transaction_id: transaction_id })
-                },
+                    _ => Err(HelperDecodeError::BadType(format!("Unknown value for 'q' field: '{}'.", query_type))),
+                }
+            },
+        }
+    }
+
+    pub fn encode(self) -> Vec<u8> {
+        let mut map = HashMap::new();
+        match self {
+            RoutePacket::Nodes { nodes, transaction_id } => {
+                map.insert(b"n".to_vec(), BValue::String(nodes.into_bytes()));
+                map.insert(b"txid".to_vec(), BValue::String(transaction_id));
+            },
+            RoutePacket::GetPeers { transaction_id } => {
+                map.insert(b"q".to_vec(), BValue::String(b"gp".to_vec()));
+                map.insert(b"txid".to_vec(), BValue::String(transaction_id));
+            },
+            RoutePacket::FindNode { target_address, transaction_id } => {
+                map.insert(b"q".to_vec(), BValue::String(b"fn".to_vec()));
+                map.insert(b"tar".to_vec(), BValue::String(target_address.into_bytes()));
+                map.insert(b"txid".to_vec(), BValue::String(transaction_id));
             }
-        })
+        }
+        simple_bencode::encode(&BValue::Dictionary(map))
     }
 }
 
-impl Encodable for RoutePacket {
-    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-        s.emit_struct("RoutePacket", 3, |s| {
-            match *self {
-                RoutePacket::FindNode { ref target_address, ref transaction_id } => {
-                    try!(s.emit_struct_field("q", 0, |s| {
-                        s.emit_str("fn")
-                    }));
-                    try!(s.emit_struct_field("tar", 1, |s| {
-                        s.emit_str(target_address)
-                    }));
-                    try!(s.emit_struct_field("txid", 2, |s| {
-                        s.emit_str(transaction_id)
-                    }));
-                    Ok(())
-                },
-                RoutePacket::Nodes { ref nodes, ref transaction_id } => {
-                    try!(s.emit_struct_field("n", 0, |s| {
-                        s.emit_str(nodes)
-                    }));
-                    try!(s.emit_struct_field("txid", 1, |s| {
-                        s.emit_str(transaction_id)
-                    }));
-                    Ok(())
-                },
-            }
-        })
-    }
-}
 
 #[cfg(test)]
 mod tests {
-    use bencode;
     use super::*;
-    use rustc_serialize::Decodable;
 
     #[test]
     fn test_fn() {
         let s = "d1:q2:fn3:tar16:abcdefghhijklmno4:txid5:12345e".as_bytes();
         let m = RoutePacket::FindNode {
             target_address: "abcdefghhijklmno".to_owned(),
-            transaction_id: "12345".to_owned()
+            transaction_id: b"12345".to_vec()
         };
 
-        let mut bencode = bencode::from_buffer(s).unwrap();
-        let mut decoder = bencode::Decoder::new(&mut bencode);
-        let s_decoded = RoutePacket::decode(&mut decoder);
+        let s_decoded = RoutePacket::decode(s);
+        let m_encoded = m.clone().encode();
 
-        let m_encoded = bencode::encode(&m);
-
-        assert_eq!(s_decoded, Ok(m));
-        assert_eq!(m_encoded.unwrap(), s);
+        assert_eq!(s_decoded.unwrap(), m);
+        assert_eq!(m_encoded, s);
     }
 
     #[test]
@@ -106,25 +98,20 @@ mod tests {
         let s = "d1:n80:cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde23456784:txid5:12345e".as_bytes();
         let m = RoutePacket::Nodes {
             nodes: "cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde2345678".to_owned(),
-            transaction_id: "12345".to_owned()
+            transaction_id: b"12345".to_vec()
         };
 
-        let mut bencode = bencode::from_buffer(s).unwrap();
-        let mut decoder = bencode::Decoder::new(&mut bencode);
-        let s_decoded = RoutePacket::decode(&mut decoder);
+        let s_decoded = RoutePacket::decode(s);
+        let m_encoded = m.clone().encode();
 
-        let m_encoded = bencode::encode(&m);
-
-        assert_eq!(s_decoded, Ok(m));
-        assert_eq!(m_encoded.unwrap(), s);
+        assert_eq!(s_decoded.unwrap(), m);
+        assert_eq!(m_encoded, s);
     }
 
     #[test]
     fn test_gp() {
         let s = b"d002:eii0e2:es5:a\x14E\x81\x001:pi17e1:q2:gp3:tar8:\x00\x00\x00\x00\x00\x00\x00\x004:txid12:\x0b\xf2\x17\xf4\x92\xa4\xc4d\xc6\x03[\xdde";
 
-        let mut bencode = bencode::from_buffer(s).unwrap();
-        let mut decoder = bencode::Decoder::new(&mut bencode);
-        RoutePacket::decode(&mut decoder).unwrap();
+        RoutePacket::decode(s).unwrap();
     }
 }

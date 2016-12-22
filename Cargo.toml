@@ -5,9 +5,8 @@ authors = ["Valentin Lorentz <progval+git@progval.net>"]
 
 [dependencies]
 byteorder = "~0.5.3"
-bencode = { git = "https://github.com/arjantop/rust-bencode.git" }
-rustc-serialize = "^0.3"
 hex = "~0.2.0"
+simple_bencode = { git = "https://github.com/rust-fcp/rust-simple-bencode.git" }
 
 [dev-dependencies]
 fcp_cryptoauth = { git = "https://github.com/rust-fcp/rust-fcp-cryptoauth.git" }

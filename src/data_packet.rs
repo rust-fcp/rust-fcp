@@ -35,7 +35,7 @@ impl DataPacket {
         let content_type = self.content_type();
         match content_type {
             256 => {
-                match route_packet::RoutePacket::new_from_slice(&self.raw[4..]) {
+                match route_packet::RoutePacket::decode(&self.raw[4..]) {
                     Ok(packet) => Ok(Payload::RoutePacket(packet)),
                     Err(_) => Err(()), // TODO: proper error handling
                 }
