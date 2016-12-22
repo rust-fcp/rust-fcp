@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use fcp_cryptoauth::wrapper::*;
 
-use fcp_switching::packet::{SwitchPacket, PacketType, Payload};
+use fcp_switching::switch_packet::{SwitchPacket, PacketType, Payload};
 use fcp_switching::operation::RoutingDecision;
 use fcp_switching::control::ControlPacket;
 
