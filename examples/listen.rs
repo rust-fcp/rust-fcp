@@ -1,7 +1,11 @@
 extern crate hex;
 extern crate rand;
+extern crate byteorder;
 extern crate fcp_cryptoauth;
 extern crate fcp_switching;
+
+use byteorder::BigEndian;
+use byteorder::ByteOrder;
 
 use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv6Addr};
 use std::collections::HashMap;
@@ -11,6 +15,7 @@ use fcp_cryptoauth::wrapper::*;
 use fcp_switching::switch_packet::{SwitchPacket, PacketType, Payload};
 use fcp_switching::operation::RoutingDecision;
 use fcp_switching::control::ControlPacket;
+use fcp_switching::route_packet::RoutePacket;
 
 use hex::ToHex;
 use rand::Rng;
@@ -104,6 +109,7 @@ pub fn main() {
                                         }
                                     }
                                     println!("Received CA handshake, containing: {}", inner_packet.to_hex());
+                                    println!("ie: session {} and route packet {:?}", BigEndian::read_u64(&inner_packet[0..8]), RoutePacket::decode(&inner_packet[8..]).unwrap());
                                 },
                                 Err(e) => println!("CA error: {:?}", e),
                             }
