@@ -12,11 +12,13 @@ use std::collections::HashMap;
 
 use fcp_cryptoauth::wrapper::*;
 
-use fcp_switching::switch_packet::{SwitchPacket, PacketType, Payload};
+use fcp_switching::switch_packet::{SwitchPacket, PacketType};
+use fcp_switching::switch_packet::Payload as SwitchPayload;
 use fcp_switching::operation::RoutingDecision;
 use fcp_switching::control::ControlPacket;
 use fcp_switching::route_packet::RoutePacket;
 use fcp_switching::data_packet::DataPacket;
+use fcp_switching::data_packet::Payload as DataPayload;
 
 use hex::ToHex;
 use rand::Rng;
@@ -24,7 +26,7 @@ use rand::Rng;
 fn random_send_ping<PeerId: Clone>(conn: &mut Wrapper<PeerId>, sock: &UdpSocket, dest: &SocketAddr, switch_packet: &SwitchPacket) {
     if rand::thread_rng().next_u32() > 0x7fffffff {
         let ping = ControlPacket::Ping { version: 17, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
-        let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, Payload::Control(ping)).unwrap();
+        let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Control(ping)).unwrap();
         packet_response.switch(4, &0b1000);
         println!("{}", packet_response.label().to_vec().to_hex());
         println!("Sending Ping SwitchPacket: {}", packet_response.raw.to_hex());
@@ -76,9 +78,9 @@ pub fn main() {
             match decision {
                 RoutingDecision::SelfInterface(_) => {
                     match switch_packet.payload() {
-                        Some(Payload::Control(ControlPacket::Ping { opaque_data, .. })) => {
+                        Some(SwitchPayload::Control(ControlPacket::Ping { opaque_data, .. })) => {
                             let control_response = ControlPacket::Pong { version: 17, opaque_data: opaque_data };
-                            let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, Payload::Control(control_response)).unwrap();
+                            let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Control(control_response)).unwrap();
                             packet_response.switch(4, &0b1000);
                             println!("Sending Pong SwitchPacket: {}", packet_response.raw.to_hex());
                             for packet in conn.wrap_message(&packet_response.raw) {
@@ -87,11 +89,11 @@ pub fn main() {
 
                             random_send_ping(&mut conn, &sock, &dest, &switch_packet);
                         },
-                        Some(Payload::Control(ControlPacket::Pong { opaque_data, .. })) => {
+                        Some(SwitchPayload::Control(ControlPacket::Pong { opaque_data, .. })) => {
                             assert_eq!(opaque_data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
                             println!("Received pong.");
                         },
-                        Some(Payload::CryptoAuthHandshake(handshake)) => {
+                        Some(SwitchPayload::CryptoAuthHandshake(handshake)) => {
                             if !inner_conn.is_some() {
                                 let (new_inner_conn, inner_packet) = Wrapper::new_incoming_connection(my_pk, my_sk.clone(), Credentials::None, None, handshake.clone()).unwrap();
                                 inner_conn = Some(new_inner_conn);
@@ -101,16 +103,20 @@ pub fn main() {
                             match inner_conn2.unwrap_message(handshake) {
                                 Ok(inner_packets) => {
                                     let inner_packet = inner_packets.get(0).unwrap().clone();
-                                    for packet_response in inner_conn2.upkeep() {
-                                        let mut switch_packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, Payload::CryptoAuthHandshake(packet_response)).unwrap();
+                                    println!("Received CA handshake, containing: {}", inner_packet.to_hex());
+                                    println!("ie: session {} and data packet {}", BigEndian::read_u32(&inner_packet[0..4]), DataPacket { raw: inner_packet[4..].to_vec() });
+                                    let getpeers_message = DataPacket::new(2, &DataPayload::RoutePacket(RoutePacket::GetPeers { transaction_id: b"blah".to_vec() }));
+                                    let mut getpeers_serialized = vec![1, 2, 3, 4]; // Session handle
+                                    getpeers_serialized.extend(getpeers_message.raw);
+                                    println!("Sending getpeers: {}", getpeers_serialized.to_hex());
+                                    for packet_response in inner_conn2.wrap_message_immediately(&getpeers_serialized) {
+                                        let mut switch_packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::CryptoAuthHandshake(packet_response)).unwrap();
                                         assert_eq!(switch_packet_response.switch(4, &0b0001), RoutingDecision::Forward(0b0011));
                                         println!("Sending switch packet: {}", switch_packet_response.raw.to_hex());
                                         for packet in conn.wrap_message(&switch_packet_response.raw) {
                                             sock.send_to(&packet, dest).unwrap();
                                         }
                                     }
-                                    println!("Received CA handshake, containing: {}", inner_packet.to_hex());
-                                    println!("ie: session {} and data packet {}", BigEndian::read_u32(&inner_packet[0..4]), DataPacket { raw: inner_packet[4..].to_vec() });
                                 },
                                 Err(e) => println!("CA error: {:?}", e),
                             }
