@@ -56,7 +56,7 @@ pub fn main() {
     let dest = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 54321);
 
     let mut conn = Wrapper::new_outgoing_connection(
-            my_pk, my_sk.clone(), their_pk, credentials, Some(allowed_peers.clone()), "my peer");
+            my_pk, my_sk.clone(), their_pk, credentials, Some(allowed_peers.clone()), "my peer", None);
 
     let mut inner_conn: Option<Wrapper<()>> = None;
 
@@ -95,7 +95,7 @@ pub fn main() {
                         },
                         Some(SwitchPayload::CryptoAuthHandshake(handshake)) => {
                             if !inner_conn.is_some() {
-                                let (new_inner_conn, inner_packet) = Wrapper::new_incoming_connection(my_pk, my_sk.clone(), Credentials::None, None, handshake.clone()).unwrap();
+                                let (new_inner_conn, inner_packet) = Wrapper::new_incoming_connection(my_pk, my_sk.clone(), Credentials::None, None, Some(0x12345678), handshake.clone()).unwrap();
                                 inner_conn = Some(new_inner_conn);
                                 println!("Received CA handshake, containing: {}", inner_packet.to_hex());
                             };
@@ -104,9 +104,9 @@ pub fn main() {
                                 Ok(inner_packets) => {
                                     let inner_packet = inner_packets.get(0).unwrap().clone();
                                     println!("Received CA handshake, containing: {}", inner_packet.to_hex());
-                                    println!("ie: session {} and data packet {}", BigEndian::read_u32(&inner_packet[0..4]), DataPacket { raw: inner_packet[4..].to_vec() });
+                                    println!("ie: {}", DataPacket { raw: inner_packet });
                                     let getpeers_message = DataPacket::new(2, &DataPayload::RoutePacket(RoutePacket::GetPeers { transaction_id: b"blah".to_vec() }));
-                                    let mut getpeers_serialized = vec![1, 2, 3, 4]; // Session handle
+                                    let mut getpeers_serialized = vec![]; // Session handle
                                     getpeers_serialized.extend(getpeers_message.raw);
                                     println!("Sending getpeers: {}", getpeers_serialized.to_hex());
                                     for packet_response in inner_conn2.wrap_message_immediately(&getpeers_serialized) {
