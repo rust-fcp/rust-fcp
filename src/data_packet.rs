@@ -46,13 +46,13 @@ impl DataPacket {
         BigEndian::read_u16(&self.raw[2..4])
     }
 
-    pub fn payload(self) -> Result<Payload, ()> {
+    pub fn payload(self) -> Result<Payload, String> {
         let content_type = self.content_type();
         match content_type {
             256 => {
                 match route_packet::RoutePacket::decode(&self.raw[4..]) {
                     Ok(packet) => Ok(Payload::RoutePacket(packet)),
-                    Err(_) => Err(()), // TODO: proper error handling
+                    Err(e) => Err(format!("Could not decode route packet: {:?}", e)), // TODO: proper error handling
                 }
             },
             _ => unimplemented!()

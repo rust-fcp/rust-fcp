@@ -10,7 +10,8 @@ use simple_bencode::decoding_helpers::HelperDecodeError;
 #[derive(PartialEq)]
 #[derive(Clone)]
 pub enum RoutePacket {
-    GetPeers { transaction_id: Vec<u8> },
+    GetPeers { encoding_scheme: Option<Vec<u8>>, encoding_index: i64, transaction_id: Vec<u8>, version: i64 },
+    SendPeers { encoding_scheme: Option<Vec<u8>>, encoding_index: i64, transaction_id: Vec<u8>, version: i64 },
     FindNode { target_address: String, transaction_id: Vec<u8> },
     Nodes { nodes: String, transaction_id: Vec<u8> },
 }
@@ -30,17 +31,40 @@ impl RoutePacket {
             Ok(v) => return Err(HelperDecodeError::BadType(format!("Expected dict at root, got: {:?}", v))),
             Err(e) => return Err(HelperDecodeError::BencodeDecodeError(e)),
         };
+        println!("{:?}", map.keys().collect::<Vec<_>>().into_iter().map(|v| String::from_utf8(v.clone()).unwrap()).collect::<Vec<String>>()); // DEBUG: to show the keys in the messages
         let transaction_id = try!(simple_bencode::decoding_helpers::pop_value_bytestring(&mut map, "txid".to_owned()));
         match simple_bencode::decoding_helpers::pop_value_utf8_string(&mut map, "q".to_owned()) {
             Err(HelperDecodeError::MissingKey(_)) => { // Answer to a query
-                let nodes = try!(simple_bencode::decoding_helpers::pop_value_utf8_string(&mut map, "n".to_owned()));
-                Ok(RoutePacket::Nodes { nodes: nodes, transaction_id: transaction_id })
+                let nodes = simple_bencode::decoding_helpers::pop_value_utf8_string(&mut map, "n".to_owned());
+                let encoding_index = simple_bencode::decoding_helpers::pop_value_integer(&mut map, "ei".to_owned());
+                match (nodes, encoding_index) {
+                    (Ok(nodes), Err(HelperDecodeError::MissingKey(_))) =>
+                        Ok(RoutePacket::Nodes { nodes: nodes, transaction_id: transaction_id }),
+                    (Err(HelperDecodeError::MissingKey(_)), Ok(encoding_index)) => {
+                        let version = try!(simple_bencode::decoding_helpers::pop_value_integer(&mut map, "p".to_owned()));
+                        let encoding_scheme = match simple_bencode::decoding_helpers::pop_value_bytestring(&mut map, "es".to_owned()) {
+                            Ok(s) => Some(s),
+                            Err(HelperDecodeError::MissingKey(_)) => None,
+                            Err(e) => return Err(e),
+                        };
+                        Ok(RoutePacket::SendPeers { encoding_index: encoding_index, encoding_scheme: encoding_scheme, transaction_id: transaction_id, version: version })
+                    },
+                    (Ok(_), Ok(_)) => panic!("Received both 'n' and 'ei' keys in a route package."),
+                    (_, _) => panic!("Received neither 'q', 'n', or 'ei' key in a route packet."),
+                }
             },
             Err(e) => Err(e),
             Ok(query_type) => {
                 match query_type.as_ref() {
                     "gp" => {
-                        Ok(RoutePacket::GetPeers { transaction_id: transaction_id })
+                        let version = try!(simple_bencode::decoding_helpers::pop_value_integer(&mut map, "p".to_owned()));
+                        let encoding_index = try!(simple_bencode::decoding_helpers::pop_value_integer(&mut map, "ei".to_owned()));
+                        let encoding_scheme = match simple_bencode::decoding_helpers::pop_value_bytestring(&mut map, "es".to_owned()) {
+                            Ok(s) => Some(s),
+                            Err(HelperDecodeError::MissingKey(_)) => None,
+                            Err(e) => return Err(e),
+                        };
+                        Ok(RoutePacket::GetPeers { encoding_index: encoding_index, encoding_scheme: encoding_scheme, transaction_id: transaction_id, version: version })
                     },
                     "fn" => {
                         let target_address = try!(simple_bencode::decoding_helpers::pop_value_utf8_string(&mut map, "tar".to_owned()));
@@ -59,8 +83,27 @@ impl RoutePacket {
                 map.insert(b"n".to_vec(), BValue::String(nodes.into_bytes()));
                 map.insert(b"txid".to_vec(), BValue::String(transaction_id));
             },
-            RoutePacket::GetPeers { transaction_id } => {
+            RoutePacket::GetPeers { encoding_index, encoding_scheme, transaction_id, version } => {
+                map.insert(b"ei".to_vec(), BValue::Integer(encoding_index));
+                match encoding_scheme {
+                    Some(encoding_scheme) => {
+                        map.insert(b"es".to_vec(), BValue::String(encoding_scheme));
+                    },
+                    None => ()
+                }
                 map.insert(b"q".to_vec(), BValue::String(b"gp".to_vec()));
+                map.insert(b"p".to_vec(), BValue::Integer(version));
+                map.insert(b"txid".to_vec(), BValue::String(transaction_id));
+            },
+            RoutePacket::SendPeers { encoding_index, encoding_scheme, transaction_id, version } => {
+                map.insert(b"ei".to_vec(), BValue::Integer(encoding_index));
+                match encoding_scheme {
+                    Some(encoding_scheme) => {
+                        map.insert(b"es".to_vec(), BValue::String(encoding_scheme));
+                    },
+                    None => ()
+                }
+                map.insert(b"p".to_vec(), BValue::Integer(version));
                 map.insert(b"txid".to_vec(), BValue::String(transaction_id));
             },
             RoutePacket::FindNode { target_address, transaction_id } => {
