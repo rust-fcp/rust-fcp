@@ -69,7 +69,6 @@ impl Switch {
             let ping = ControlPacket::Ping { version: 17, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
             let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Control(ping)).unwrap();
             self.send(&mut packet_response, 0b001);
-            println!("Sending Ping SwitchPacket: {}", packet_response.raw.to_hex());
         }
     }
 
@@ -96,11 +95,9 @@ impl Switch {
     }
 
     fn on_inner_ca_message(&mut self, switch_packet: &SwitchPacket, handle: u32, ca_message: Vec<u8>) {
-        println!("Received CA packet, containing: {}", ca_message.to_hex());
-        println!("ie: {}", DataPacket { raw: ca_message });
+        println!("Received data packet: {}", DataPacket { raw: ca_message });
         if rand::thread_rng().next_u32() > 0x7fffffff {
-            let getpeers_message = DataPacket::new(2, &DataPayload::RoutePacket(RoutePacket::GetPeers { encoding_index: 1, encoding_scheme: None, transaction_id: b"blah".to_vec(), version: 17 }));
-            println!("Sending getpeers: {}", getpeers_message.raw.to_hex());
+            let getpeers_message = DataPacket::new(2, &DataPayload::RoutePacket(RoutePacket::GetPeers { encoding_index: 1, encoding_scheme: None, transaction_id: b"blah".to_vec(), version: 17, target_address: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]) }));
             let mut responses = Vec::new();
             {
                 let inner_conn = self.inner_conns.get_mut(&handle).unwrap();
@@ -131,7 +128,7 @@ impl Switch {
             },
             Some(SwitchPayload::Control(ControlPacket::Pong { opaque_data, .. })) => {
                 assert_eq!(opaque_data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
-                println!("Received pong.");
+                println!("Received pong (label: {}).", switch_packet.label().to_vec().to_hex());
             },
             Some(SwitchPayload::CryptoAuthHandshake(handshake)) => {
                 let mut handle;
@@ -141,20 +138,12 @@ impl Switch {
                         break
                     }
                 };
-                let (mut inner_conn, inner_packet) = Wrapper::new_incoming_connection(self.my_pk, self.my_sk.clone(), Credentials::None, None, Some(handle), handshake.clone()).unwrap();
-                println!("Received CA handshake, containing: {}", inner_packet.to_hex());
-                let inner_packets = match inner_conn.unwrap_message(handshake) {
-                    Ok(inner_packets) => inner_packets,
-                    Err(e) => panic!("CA error: {:?}", e),
-                };
+                let (inner_conn, inner_packet) = Wrapper::new_incoming_connection(self.my_pk, self.my_sk.clone(), Credentials::None, None, Some(handle), handshake.clone()).unwrap();
                 self.inner_conns.insert(handle, inner_conn);
-                for inner_packet in inner_packets {
-                    self.on_inner_ca_message(switch_packet, handle, inner_packet)
-                }
+                self.on_inner_ca_message(switch_packet, handle, inner_packet);
                 self.random_send_ping(switch_packet);
             },
             Some(SwitchPayload::Other(handle, ca_message)) => {
-                println!("Received inner CA packet");
                 let inner_packets = match self.inner_conns.get_mut(&handle) {
                     Some(inner_conn) => {
                         match inner_conn.unwrap_message(ca_message) {
@@ -209,7 +198,6 @@ impl Switch {
         };
         for message in messages {
             let mut switch_packet = SwitchPacket { raw: message };
-            println!("Received switch packet: {}. Type: {:?}, Label: {}, payload: {:?}", switch_packet.raw.to_hex(), switch_packet.packet_type(), switch_packet.label().to_hex(), switch_packet.payload());
             self.send(&mut switch_packet, iface_id)
         }
     }
@@ -226,7 +214,6 @@ impl Switch {
             let (nb_bytes, addr) = self.sock.recv_from(&mut buf).unwrap();
             assert!(nb_bytes < 1024);
             buf.truncate(nb_bytes);
-            println!("Received packet: {}", buf.to_hex());
             self.on_outer_ca_message(addr, buf);
         }
     }
