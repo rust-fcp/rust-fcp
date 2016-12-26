@@ -23,76 +23,109 @@ use fcp_switching::data_packet::Payload as DataPayload;
 use hex::ToHex;
 use rand::Rng;
 
-fn random_send_ping<PeerId: Clone>(conn: &mut Wrapper<PeerId>, sock: &UdpSocket, dest: &SocketAddr, switch_packet: &SwitchPacket) {
-    if rand::thread_rng().next_u32() > 0x7fffffff {
-        let ping = ControlPacket::Ping { version: 17, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
-        let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Control(ping)).unwrap();
-        packet_response.switch(3, &0b100);
-        println!("{}", packet_response.label().to_vec().to_hex());
-        println!("Sending Ping SwitchPacket: {}", packet_response.raw.to_hex());
-        for packet in conn.wrap_message(&packet_response.raw) {
-            sock.send_to(&packet, dest).unwrap();
-        }
-    }
+struct Interface {
+    id: u8,
+    ca_session: Wrapper<String>,
+    addr: SocketAddr,
 }
 
 struct Switch {
     sock: UdpSocket,
-    dest: SocketAddr,
-    outer_conn: Wrapper<String>,
+    interfaces: Vec<Interface>,
     my_pk: PublicKey,
     my_sk: SecretKey,
     inner_conns: HashMap<u32, Wrapper<()>>,
 }
 
 impl Switch {
-    fn new(sock: UdpSocket, dest: SocketAddr, outer_conn: Wrapper<String>, my_pk: PublicKey, my_sk: SecretKey) -> Switch {
+    fn new(sock: UdpSocket, interfaces: Vec<Interface>, my_pk: PublicKey, my_sk: SecretKey) -> Switch {
         Switch {
             sock: sock,
-            dest: dest,
-            outer_conn: outer_conn,
+            interfaces: interfaces,
             inner_conns: HashMap::new(),
             my_pk: my_pk,
             my_sk: my_sk
             }
     }
 
-    fn on_inner_ca_message(&mut self, switch_packet: &SwitchPacket, handle: u32, ca_message: Vec<u8>) {
-        println!("Received CA packet, containing: {}", ca_message.to_hex());
-        println!("ie: {}", DataPacket { raw: ca_message });
-        let inner_conn = self.inner_conns.get_mut(&handle).unwrap();
+    fn reverse_iface_id(&self, iface_id: u8) -> u8 {
+        match iface_id {
+            0b000 => 0b000,
+            0b001 => 0b100,
+            0b010 => 0b010,
+            0b011 => 0b110,
+            0b100 => 0b001,
+            0b101 => 0b101,
+            0b110 => 0b011,
+            0b111 => 0b111,
+            _ => panic!("Iface id greater than 0b111"),
+        }
+    }
+
+    fn random_send_ping(&mut self, switch_packet: &SwitchPacket) {
         if rand::thread_rng().next_u32() > 0x7fffffff {
-            let getpeers_message = DataPacket::new(2, &DataPayload::RoutePacket(RoutePacket::GetPeers { encoding_index: 1, encoding_scheme: None, transaction_id: b"blah".to_vec(), version: 17 }));
-            println!("Sending getpeers: {}", getpeers_message.raw.to_hex());
-            for packet_response in inner_conn.wrap_message_immediately(&getpeers_message.raw) {
-                let mut switch_packet_response = if BigEndian::read_u32(&packet_response[0..4]) < 4 {
-                    SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::CryptoAuthHandshake(packet_response)).unwrap()
+            let ping = ControlPacket::Ping { version: 17, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
+            let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Control(ping)).unwrap();
+            self.send(&mut packet_response, 0b001);
+            println!("Sending Ping SwitchPacket: {}", packet_response.raw.to_hex());
+        }
+    }
+
+    fn send(&mut self, packet: &mut SwitchPacket, from_interface: u8) {
+        match packet.switch(3, &(self.reverse_iface_id(from_interface) as u64)) {
+            RoutingDecision::SelfInterface(_) => {
+                self.on_self_interface_switch_packet(packet);
+            }
+            RoutingDecision::Forward(iface_id) => {
+                let mut sent = false;
+                for interface in self.interfaces.iter_mut() {
+                    if interface.id as u64 == iface_id {
+                        sent = true;
+                        for packet in interface.ca_session.wrap_message(&packet.raw) {
+                            self.sock.send_to(&packet, interface.addr).unwrap();
+                        }
+                    }
                 }
-                else {
-                    let peer_handle = inner_conn.peer_session_handle().unwrap();
-                    SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Other(peer_handle, packet_response)).unwrap()
-                };
-                assert_eq!(switch_packet_response.switch(3, &0b100), RoutingDecision::Forward(0b011));
-                println!("Sending switch packet: {}", switch_packet_response.raw.to_hex());
-                for packet in self.outer_conn.wrap_message(&switch_packet_response.raw) {
-                    self.sock.send_to(&packet, self.dest).unwrap();
+                if !sent {
+                    panic!(format!("Iface {} not found for packet: {:?}", iface_id, packet));
                 }
             }
         }
     }
 
-    fn on_self_interface_switch_packet(&mut self, switch_packet: SwitchPacket) {
+    fn on_inner_ca_message(&mut self, switch_packet: &SwitchPacket, handle: u32, ca_message: Vec<u8>) {
+        println!("Received CA packet, containing: {}", ca_message.to_hex());
+        println!("ie: {}", DataPacket { raw: ca_message });
+        if rand::thread_rng().next_u32() > 0x7fffffff {
+            let getpeers_message = DataPacket::new(2, &DataPayload::RoutePacket(RoutePacket::GetPeers { encoding_index: 1, encoding_scheme: None, transaction_id: b"blah".to_vec(), version: 17 }));
+            println!("Sending getpeers: {}", getpeers_message.raw.to_hex());
+            let mut responses = Vec::new();
+            {
+                let inner_conn = self.inner_conns.get_mut(&handle).unwrap();
+                for packet_response in inner_conn.wrap_message_immediately(&getpeers_message.raw) {
+                    if BigEndian::read_u32(&packet_response[0..4]) < 4 {
+                        responses.push(SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::CryptoAuthHandshake(packet_response)).unwrap());
+                    }
+                    else {
+                        let peer_handle = inner_conn.peer_session_handle().unwrap();
+                        responses.push(SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Other(peer_handle, packet_response)).unwrap());
+                    }
+                }
+            }
+            for mut response in responses {
+                self.send(&mut response, 0b001);
+            }
+        }
+    }
+
+    fn on_self_interface_switch_packet(&mut self, switch_packet: &SwitchPacket) {
         match switch_packet.payload() {
             Some(SwitchPayload::Control(ControlPacket::Ping { opaque_data, .. })) => {
                 let control_response = ControlPacket::Pong { version: 17, opaque_data: opaque_data };
-                let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Control(control_response)).unwrap();
-                packet_response.switch(3, &0b100);
-                println!("Sending Pong SwitchPacket: {}", packet_response.raw.to_hex());
-                for packet in self.outer_conn.wrap_message(&packet_response.raw) {
-                    self.sock.send_to(&packet, self.dest).unwrap();
-                }
+                let mut packet_response = SwitchPacket::new_reply(switch_packet, &PacketType::Opaque, SwitchPayload::Control(control_response)).unwrap();
+                self.send(&mut packet_response, 0b001);
 
-                random_send_ping(&mut self.outer_conn, &self.sock, &self.dest, &switch_packet);
+                self.random_send_ping(switch_packet);
             },
             Some(SwitchPayload::Control(ControlPacket::Pong { opaque_data, .. })) => {
                 assert_eq!(opaque_data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
@@ -114,9 +147,9 @@ impl Switch {
                 };
                 self.inner_conns.insert(handle, inner_conn);
                 for inner_packet in inner_packets {
-                    self.on_inner_ca_message(&switch_packet, handle, inner_packet)
+                    self.on_inner_ca_message(switch_packet, handle, inner_packet)
                 }
-                random_send_ping(&mut self.outer_conn, &self.sock, &self.dest, &switch_packet);
+                self.random_send_ping(switch_packet);
             },
             Some(SwitchPayload::Other(handle, ca_message)) => {
                 println!("Received inner CA packet");
@@ -130,39 +163,50 @@ impl Switch {
                     None => panic!("Received unknown handle.")
                 };
                 for inner_packet in inner_packets {
-                    self.on_inner_ca_message(&switch_packet, handle, inner_packet)
+                    self.on_inner_ca_message(switch_packet, handle, inner_packet)
                 }
             }
             _ => panic!("Can only handle Pings, Pongs, and CA."),
         }
     }
 
-    fn on_outer_ca_message(&mut self, message: Vec<u8>) {
-        let mut switch_packet = SwitchPacket { raw: message };
-        println!("Received switch packet: {}. Type: {:?}, Label: {}, payload: {:?}", switch_packet.raw.to_hex(), switch_packet.packet_type(), switch_packet.label().to_hex(), switch_packet.payload());
-        let decision = switch_packet.switch(3, &0b110);
-        match decision {
-            RoutingDecision::SelfInterface(_) => {
-                self.on_self_interface_switch_packet(switch_packet);
-            },
-            RoutingDecision::Forward(director) => panic!(format!("Can only route to self interface, but switch wanted to forward to director {}.", director)),
+    fn on_outer_ca_message(&mut self, from_addr: SocketAddr, buf: Vec<u8>) {
+        let mut messages = None;
+        for interface in self.interfaces.iter_mut() {
+            if interface.addr == from_addr {
+                messages = Some(interface.ca_session.unwrap_message(buf).unwrap());
+                break;
+            }
+        }
+        let messages = messages.unwrap();
+
+        for message in messages {
+            let mut switch_packet = SwitchPacket { raw: message };
+            println!("Received switch packet: {}. Type: {:?}, Label: {}, payload: {:?}", switch_packet.raw.to_hex(), switch_packet.packet_type(), switch_packet.label().to_hex(), switch_packet.payload());
+            let decision = switch_packet.switch(3, &0b110);
+            match decision {
+                RoutingDecision::SelfInterface(_) => {
+                    self.on_self_interface_switch_packet(&switch_packet);
+                },
+                RoutingDecision::Forward(director) => panic!(format!("Can only route to self interface, but switch wanted to forward to director {}.", director)),
+            }
         }
     }
 
     fn loop_(&mut self) {
         loop {
-            for packet in self.outer_conn.upkeep() {
-                self.sock.send_to(&packet, self.dest).unwrap();
+            for interface in self.interfaces.iter_mut() {
+                for packet in interface.ca_session.upkeep() {
+                    self.sock.send_to(&packet, interface.addr).unwrap();
+                }
             }
 
             let mut buf = vec![0u8; 1024];
-            let (nb_bytes, _addr) = self.sock.recv_from(&mut buf).unwrap();
+            let (nb_bytes, addr) = self.sock.recv_from(&mut buf).unwrap();
             assert!(nb_bytes < 1024);
             buf.truncate(nb_bytes);
             println!("Received packet: {}", buf.to_hex());
-            for message in self.outer_conn.unwrap_message(buf).unwrap() {
-                self.on_outer_ca_message(message);
-            }
+            self.on_outer_ca_message(addr, buf);
         }
     }
 }
@@ -189,7 +233,9 @@ pub fn main() {
     let conn = Wrapper::new_outgoing_connection(
             my_pk, my_sk.clone(), their_pk, credentials, Some(allowed_peers.clone()), "my peer".to_owned(), None);
 
-    let mut switch = Switch::new(sock, dest, conn, my_pk, my_sk);
+    let interfaces = vec![Interface { id: 0b011, ca_session: conn, addr: dest }];
+
+    let mut switch = Switch::new(sock, interfaces, my_pk, my_sk);
 
     switch.loop_();
 }
