@@ -97,7 +97,7 @@ impl Switch {
     fn on_inner_ca_message(&mut self, switch_packet: &SwitchPacket, handle: u32, ca_message: Vec<u8>) {
         println!("Received data packet: {}", DataPacket { raw: ca_message });
         if rand::thread_rng().next_u32() > 0x7fffffff {
-            let getpeers_message = DataPacket::new(2, &DataPayload::RoutePacket(RoutePacket::GetPeers { encoding_index: 1, encoding_scheme: None, transaction_id: b"blah".to_vec(), version: 17, target_address: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]) }));
+            let getpeers_message = DataPacket::new(2, &DataPayload::RoutePacket(RoutePacket { query: None, nodes: None, encoding_index: Some(1), encoding_scheme: None, transaction_id: b"blah".to_vec(), version: 17, target_address: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]) }));
             let mut responses = Vec::new();
             {
                 let inner_conn = self.inner_conns.get_mut(&handle).unwrap();

@@ -9,11 +9,14 @@ use simple_bencode::decoding_helpers::HelperDecodeError;
 #[derive(Eq)]
 #[derive(PartialEq)]
 #[derive(Clone)]
-pub enum RoutePacket {
-    GetPeers { encoding_scheme: Option<Vec<u8>>, encoding_index: i64, transaction_id: Vec<u8>, version: i64 },
-    SendPeers { encoding_scheme: Option<Vec<u8>>, encoding_index: i64, transaction_id: Vec<u8>, version: i64 },
-    FindNode { target_address: String, transaction_id: Vec<u8> },
-    Nodes { nodes: String, transaction_id: Vec<u8> },
+pub struct RoutePacket {
+    pub query: Option<String>,
+    pub encoding_index: Option<i64>,
+    pub encoding_scheme: Option<Vec<u8>>,
+    pub nodes: Option<Vec<u8>>,
+    pub target_address: Option<Vec<u8>>,
+    pub transaction_id: Vec<u8>,
+    pub version: i64,
 }
 
 pub enum DecodeError {
@@ -31,87 +34,27 @@ impl RoutePacket {
             Ok(v) => return Err(HelperDecodeError::BadType(format!("Expected dict at root, got: {:?}", v))),
             Err(e) => return Err(HelperDecodeError::BencodeDecodeError(e)),
         };
+        println!("{:?}", map);
         println!("{:?}", map.keys().collect::<Vec<_>>().into_iter().map(|v| String::from_utf8(v.clone()).unwrap()).collect::<Vec<String>>()); // DEBUG: to show the keys in the messages
+        let query = try!(simple_bencode::decoding_helpers::pop_value_utf8_string_option(&mut map, "q".to_owned()));
+        let encoding_index = try!(simple_bencode::decoding_helpers::pop_value_integer_option(&mut map, "ei".to_owned()));
+        let encoding_scheme = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "es".to_owned()));
+        let nodes = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "n".to_owned()));
+        let target_address = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "tar".to_owned()));
         let transaction_id = try!(simple_bencode::decoding_helpers::pop_value_bytestring(&mut map, "txid".to_owned()));
-        match simple_bencode::decoding_helpers::pop_value_utf8_string(&mut map, "q".to_owned()) {
-            Err(HelperDecodeError::MissingKey(_)) => { // Answer to a query
-                let nodes = simple_bencode::decoding_helpers::pop_value_utf8_string(&mut map, "n".to_owned());
-                let encoding_index = simple_bencode::decoding_helpers::pop_value_integer(&mut map, "ei".to_owned());
-                match (nodes, encoding_index) {
-                    (Ok(nodes), Err(HelperDecodeError::MissingKey(_))) =>
-                        Ok(RoutePacket::Nodes { nodes: nodes, transaction_id: transaction_id }),
-                    (Err(HelperDecodeError::MissingKey(_)), Ok(encoding_index)) => {
-                        let version = try!(simple_bencode::decoding_helpers::pop_value_integer(&mut map, "p".to_owned()));
-                        let encoding_scheme = match simple_bencode::decoding_helpers::pop_value_bytestring(&mut map, "es".to_owned()) {
-                            Ok(s) => Some(s),
-                            Err(HelperDecodeError::MissingKey(_)) => None,
-                            Err(e) => return Err(e),
-                        };
-                        Ok(RoutePacket::SendPeers { encoding_index: encoding_index, encoding_scheme: encoding_scheme, transaction_id: transaction_id, version: version })
-                    },
-                    (Ok(_), Ok(_)) => panic!("Received both 'n' and 'ei' keys in a route package."),
-                    (_, _) => panic!("Received neither 'q', 'n', or 'ei' key in a route packet."),
-                }
-            },
-            Err(e) => Err(e),
-            Ok(query_type) => {
-                match query_type.as_ref() {
-                    "gp" => {
-                        let version = try!(simple_bencode::decoding_helpers::pop_value_integer(&mut map, "p".to_owned()));
-                        let encoding_index = try!(simple_bencode::decoding_helpers::pop_value_integer(&mut map, "ei".to_owned()));
-                        let encoding_scheme = match simple_bencode::decoding_helpers::pop_value_bytestring(&mut map, "es".to_owned()) {
-                            Ok(s) => Some(s),
-                            Err(HelperDecodeError::MissingKey(_)) => None,
-                            Err(e) => return Err(e),
-                        };
-                        Ok(RoutePacket::GetPeers { encoding_index: encoding_index, encoding_scheme: encoding_scheme, transaction_id: transaction_id, version: version })
-                    },
-                    "fn" => {
-                        let target_address = try!(simple_bencode::decoding_helpers::pop_value_utf8_string(&mut map, "tar".to_owned()));
-                        Ok(RoutePacket::FindNode { target_address: target_address, transaction_id: transaction_id })
-                    }
-                    _ => Err(HelperDecodeError::BadType(format!("Unknown value for 'q' field: '{}'.", query_type))),
-                }
-            },
-        }
+        let version = try!(simple_bencode::decoding_helpers::pop_value_integer(&mut map, "p".to_owned()));
+        Ok(RoutePacket { query: query, encoding_index: encoding_index, encoding_scheme: encoding_scheme, nodes: nodes, target_address: target_address, transaction_id: transaction_id, version: version })
     }
 
     pub fn encode(self) -> Vec<u8> {
         let mut map = HashMap::new();
-        match self {
-            RoutePacket::Nodes { nodes, transaction_id } => {
-                map.insert(b"n".to_vec(), BValue::String(nodes.into_bytes()));
-                map.insert(b"txid".to_vec(), BValue::String(transaction_id));
-            },
-            RoutePacket::GetPeers { encoding_index, encoding_scheme, transaction_id, version } => {
-                map.insert(b"ei".to_vec(), BValue::Integer(encoding_index));
-                match encoding_scheme {
-                    Some(encoding_scheme) => {
-                        map.insert(b"es".to_vec(), BValue::String(encoding_scheme));
-                    },
-                    None => ()
-                }
-                map.insert(b"q".to_vec(), BValue::String(b"gp".to_vec()));
-                map.insert(b"p".to_vec(), BValue::Integer(version));
-                map.insert(b"txid".to_vec(), BValue::String(transaction_id));
-            },
-            RoutePacket::SendPeers { encoding_index, encoding_scheme, transaction_id, version } => {
-                map.insert(b"ei".to_vec(), BValue::Integer(encoding_index));
-                match encoding_scheme {
-                    Some(encoding_scheme) => {
-                        map.insert(b"es".to_vec(), BValue::String(encoding_scheme));
-                    },
-                    None => ()
-                }
-                map.insert(b"p".to_vec(), BValue::Integer(version));
-                map.insert(b"txid".to_vec(), BValue::String(transaction_id));
-            },
-            RoutePacket::FindNode { target_address, transaction_id } => {
-                map.insert(b"q".to_vec(), BValue::String(b"fn".to_vec()));
-                map.insert(b"tar".to_vec(), BValue::String(target_address.into_bytes()));
-                map.insert(b"txid".to_vec(), BValue::String(transaction_id));
-            }
-        }
+        self.query.map(|q| map.insert(b"q".to_vec(), BValue::String(q.into_bytes().to_vec())));
+        self.encoding_index.map(|ei| map.insert(b"ei".to_vec(), BValue::Integer(ei)));
+        self.encoding_scheme.map(|es| map.insert(b"es".to_vec(), BValue::String(es)));
+        self.nodes.map(|n| map.insert(b"n".to_vec(), BValue::String(n)));
+        self.target_address.map(|tar| map.insert(b"tar".to_vec(), BValue::String(tar)));
+        map.insert(b"txid".to_vec(), BValue::String(self.transaction_id));
+        map.insert(b"p".to_vec(), BValue::Integer(self.version));
         simple_bencode::encode(&BValue::Dictionary(map))
     }
 }
