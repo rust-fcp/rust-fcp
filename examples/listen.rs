@@ -35,16 +35,18 @@ struct Switch {
     my_pk: PublicKey,
     my_sk: SecretKey,
     inner_conns: HashMap<u32, Wrapper<()>>,
+    allowed_peers: HashMap<Credentials, String>,
 }
 
 impl Switch {
-    fn new(sock: UdpSocket, interfaces: Vec<Interface>, my_pk: PublicKey, my_sk: SecretKey) -> Switch {
+    fn new(sock: UdpSocket, interfaces: Vec<Interface>, my_pk: PublicKey, my_sk: SecretKey, allowed_peers: HashMap<Credentials, String>) -> Switch {
         Switch {
             sock: sock,
             interfaces: interfaces,
             inner_conns: HashMap::new(),
             my_pk: my_pk,
-            my_sk: my_sk
+            my_sk: my_sk,
+            allowed_peers: allowed_peers,
             }
     }
 
@@ -170,26 +172,45 @@ impl Switch {
         }
     }
 
-    fn on_outer_ca_message(&mut self, from_addr: SocketAddr, buf: Vec<u8>) {
-        let mut messages = None;
-        for interface in self.interfaces.iter_mut() {
-            if interface.addr == from_addr {
-                messages = Some(interface.ca_session.unwrap_message(buf).unwrap());
-                break;
+    fn get_incoming_iface_and_open(&mut self, from_addr: SocketAddr, buf: Vec<u8>) -> (&Interface, Vec<Vec<u8>>) {
+        let mut iface_exists = false;
+        for candidate_interface in self.interfaces.iter_mut() {
+            if candidate_interface.addr == from_addr {
+                iface_exists = true;
+                break
             }
         }
-        let messages = messages.unwrap();
 
+        if iface_exists {
+            // Workaround for https://github.com/rust-lang/rust/issues/38614
+            for candidate_interface in self.interfaces.iter_mut() {
+                if candidate_interface.addr == from_addr {
+                    let messages = candidate_interface.ca_session.unwrap_message(buf).unwrap();
+                    return (candidate_interface, messages);
+                }
+            }
+            panic!("The impossible happened.");
+        }
+        else {
+            // Not a known interface; create one
+            let next_iface_id = (0..0b1000).filter(|candidate| self.interfaces.iter().find(|iface| iface.id == *candidate).is_none()).next().unwrap();
+            let (ca_session, message) = Wrapper::new_incoming_connection(self.my_pk.clone(), self.my_sk.clone(), Credentials::None, Some(self.allowed_peers.clone()), None, buf).unwrap();
+            let new_iface = Interface { id: next_iface_id, ca_session: ca_session, addr: from_addr };
+            self.interfaces.push(new_iface);
+            let interface = self.interfaces.last_mut().unwrap();
+            (interface, vec![message])
+        }
+    }
+
+    fn on_outer_ca_message(&mut self, from_addr: SocketAddr, buf: Vec<u8>) {
+        let (iface_id, messages) = {
+            let (interface, messages) = self.get_incoming_iface_and_open(from_addr, buf);
+            (interface.id, messages)
+        };
         for message in messages {
             let mut switch_packet = SwitchPacket { raw: message };
             println!("Received switch packet: {}. Type: {:?}, Label: {}, payload: {:?}", switch_packet.raw.to_hex(), switch_packet.packet_type(), switch_packet.label().to_hex(), switch_packet.payload());
-            let decision = switch_packet.switch(3, &0b110);
-            match decision {
-                RoutingDecision::SelfInterface(_) => {
-                    self.on_self_interface_switch_packet(&switch_packet);
-                },
-                RoutingDecision::Forward(director) => panic!(format!("Can only route to self interface, but switch wanted to forward to director {}.", director)),
-            }
+            self.send(&mut switch_packet, iface_id)
         }
     }
 
@@ -209,6 +230,7 @@ impl Switch {
             self.on_outer_ca_message(addr, buf);
         }
     }
+
 }
 
 pub fn main() {
@@ -235,7 +257,7 @@ pub fn main() {
 
     let interfaces = vec![Interface { id: 0b011, ca_session: conn, addr: dest }];
 
-    let mut switch = Switch::new(sock, interfaces, my_pk, my_sk);
+    let mut switch = Switch::new(sock, interfaces, my_pk, my_sk, allowed_peers);
 
     switch.loop_();
 }
