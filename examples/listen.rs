@@ -117,7 +117,7 @@ impl Switch {
             node_protocol_versions.push(18);
         }
         for (peer_handle, &(path, ref inner_conn)) in self.inner_conns.iter() {
-            if true || *peer_handle != handle {
+            if *peer_handle != handle {
                 let mut node = [0u8; 40];
                 node[0..32].copy_from_slice(&inner_conn.their_pk().0);
                 node[32..40].copy_from_slice(&path);
@@ -126,7 +126,7 @@ impl Switch {
                 println!("Announcing one peer, with path: {}", path.to_vec().to_hex());
             }
         }
-        let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: None, nodes: Some(nodes), node_protocol_versions: Some(node_protocol_versions), encoding_index: Some(0), encoding_scheme: None, transaction_id: route_packet.transaction_id.clone(), protocol_version: 18, target_address: None }));
+        let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: None, nodes: Some(nodes), node_protocol_versions: Some(node_protocol_versions), encoding_index: Some(0), encoding_scheme: Some(vec![0b011_00000, 0b00]), transaction_id: route_packet.transaction_id.clone(), protocol_version: 18, target_address: None }));
         let responses: Vec<_>;
         {
             let &mut (_path, ref mut inner_conn) = self.inner_conns.get_mut(&handle).unwrap();
@@ -156,7 +156,7 @@ impl Switch {
             }
         }
         if rand::thread_rng().next_u32() > 0xafffffff {
-            let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: Some("gp".to_owned()), nodes: None, node_protocol_versions: None, encoding_index: Some(0), encoding_scheme: None, transaction_id: b"blah".to_vec(), protocol_version: 18, target_address: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]) }));
+            let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: Some("gp".to_owned()), nodes: None, node_protocol_versions: None, encoding_index: Some(0), encoding_scheme: Some(vec![0b011_00000, 0b00]), transaction_id: b"blah".to_vec(), protocol_version: 18, target_address: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]) }));
             let mut responses = Vec::new();
             {
                 let &mut (_path, ref mut inner_conn) = self.inner_conns.get_mut(&handle).unwrap();
