@@ -14,7 +14,7 @@ use fcp_cryptoauth::wrapper::*;
 
 use fcp_switching::switch_packet::{SwitchPacket, PacketType};
 use fcp_switching::switch_packet::Payload as SwitchPayload;
-use fcp_switching::operation::RoutingDecision;
+use fcp_switching::operation::{RoutingDecision, reverse_label};
 use fcp_switching::control::ControlPacket;
 use fcp_switching::route_packet::RoutePacket;
 use fcp_switching::data_packet::DataPacket;
@@ -29,12 +29,22 @@ struct Interface {
     addr: SocketAddr,
 }
 
+fn make_reply(switch_packet: &SwitchPacket, packet_response: Vec<u8>, inner_conn: &Wrapper<()>) -> SwitchPacket {
+    if BigEndian::read_u32(&packet_response[0..4]) < 4 {
+        SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::CryptoAuthHandshake(packet_response)).unwrap()
+    }
+    else {
+        let peer_handle = inner_conn.peer_session_handle().unwrap();
+        SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Other(peer_handle, packet_response)).unwrap()
+    }
+}
+
 struct Switch {
     sock: UdpSocket,
     interfaces: Vec<Interface>,
     my_pk: PublicKey,
     my_sk: SecretKey,
-    inner_conns: HashMap<u32, Wrapper<()>>,
+    inner_conns: HashMap<u32, ([u8; 8], Wrapper<()>)>,
     allowed_peers: HashMap<Credentials, String>,
 }
 
@@ -64,9 +74,9 @@ impl Switch {
         }
     }
 
-    fn random_send_ping(&mut self, switch_packet: &SwitchPacket) {
-        if rand::thread_rng().next_u32() > 0x7fffffff {
-            let ping = ControlPacket::Ping { version: 17, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
+    fn random_send_switch_ping(&mut self, switch_packet: &SwitchPacket) {
+        if rand::thread_rng().next_u32() > 0xafffffff {
+            let ping = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
             let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Control(ping)).unwrap();
             self.send(&mut packet_response, 0b001);
         }
@@ -94,21 +104,65 @@ impl Switch {
         }
     }
 
+    fn reply_getpeers(&mut self, switch_packet: &SwitchPacket, route_packet: &RoutePacket, handle: u32) {
+        let mut nodes = Vec::new();
+        let mut node_protocol_versions = vec![1u8];
+        nodes.reserve(40 * (self.inner_conns.len()+1));
+        {
+            // Add myself
+            let mut node = [0u8; 40];
+            node[0..32].copy_from_slice(&self.my_pk.0);
+            BigEndian::write_u64(&mut node[32..40], 0b001u64);
+            nodes.extend(node.iter());
+            node_protocol_versions.push(18);
+        }
+        for (peer_handle, &(path, ref inner_conn)) in self.inner_conns.iter() {
+            if true || *peer_handle != handle {
+                let mut node = [0u8; 40];
+                node[0..32].copy_from_slice(&inner_conn.their_pk().0);
+                node[32..40].copy_from_slice(&path);
+                nodes.extend(node.iter());
+                node_protocol_versions.push(18); // TODO
+                println!("Announcing one peer, with path: {}", path.to_vec().to_hex());
+            }
+        }
+        let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: None, nodes: Some(nodes), node_protocol_versions: Some(node_protocol_versions), encoding_index: Some(0), encoding_scheme: None, transaction_id: route_packet.transaction_id.clone(), protocol_version: 18, target_address: None }));
+        let responses: Vec<_>;
+        {
+            let &mut (_path, ref mut inner_conn) = self.inner_conns.get_mut(&handle).unwrap();
+            println!("Sending data packet: {}", getpeers_response);
+            let tmp = inner_conn.wrap_message_immediately(&getpeers_response.raw);
+            responses = tmp.into_iter().map(|r| make_reply(&switch_packet, r, &inner_conn)).collect();
+        }
+        for mut response in responses {
+            self.send(&mut response, 0b001);
+        }
+    }
+
     fn on_inner_ca_message(&mut self, switch_packet: &SwitchPacket, handle: u32, ca_message: Vec<u8>) {
-        println!("Received data packet: {}", DataPacket { raw: ca_message });
-        if rand::thread_rng().next_u32() > 0x7fffffff {
-            let getpeers_message = DataPacket::new(2, &DataPayload::RoutePacket(RoutePacket { query: None, nodes: None, encoding_index: Some(1), encoding_scheme: None, transaction_id: b"blah".to_vec(), version: 17, target_address: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]) }));
+        let data_packet = DataPacket { raw: ca_message };
+        println!("Received data packet: {}", data_packet);
+        match data_packet.payload().unwrap() {
+            DataPayload::RoutePacket(route_packet) => {
+                if route_packet.query == Some("gp".to_owned()) {
+                    self.reply_getpeers(switch_packet, &route_packet, handle);
+                }
+                else if route_packet.query == Some("fn".to_owned()) {
+                    self.reply_getpeers(switch_packet, &route_packet, handle);
+                }
+                else if route_packet.query == Some("pn".to_owned()) {
+                    self.reply_getpeers(switch_packet, &route_packet, handle);
+                }
+            }
+        }
+        if rand::thread_rng().next_u32() > 0xafffffff {
+            let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: Some("gp".to_owned()), nodes: None, node_protocol_versions: None, encoding_index: Some(0), encoding_scheme: None, transaction_id: b"blah".to_vec(), protocol_version: 18, target_address: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]) }));
             let mut responses = Vec::new();
             {
-                let inner_conn = self.inner_conns.get_mut(&handle).unwrap();
+                let &mut (_path, ref mut inner_conn) = self.inner_conns.get_mut(&handle).unwrap();
+                println!("Sending data packet: {}", getpeers_message);
                 for packet_response in inner_conn.wrap_message_immediately(&getpeers_message.raw) {
-                    if BigEndian::read_u32(&packet_response[0..4]) < 4 {
-                        responses.push(SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::CryptoAuthHandshake(packet_response)).unwrap());
-                    }
-                    else {
-                        let peer_handle = inner_conn.peer_session_handle().unwrap();
-                        responses.push(SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Other(peer_handle, packet_response)).unwrap());
-                    }
+                    responses.push(make_reply(&switch_packet, packet_response, inner_conn));
                 }
             }
             for mut response in responses {
@@ -120,11 +174,11 @@ impl Switch {
     fn on_self_interface_switch_packet(&mut self, switch_packet: &SwitchPacket) {
         match switch_packet.payload() {
             Some(SwitchPayload::Control(ControlPacket::Ping { opaque_data, .. })) => {
-                let control_response = ControlPacket::Pong { version: 17, opaque_data: opaque_data };
+                let control_response = ControlPacket::Pong { version: 18, opaque_data: opaque_data };
                 let mut packet_response = SwitchPacket::new_reply(switch_packet, &PacketType::Opaque, SwitchPayload::Control(control_response)).unwrap();
                 self.send(&mut packet_response, 0b001);
 
-                self.random_send_ping(switch_packet);
+                self.random_send_switch_ping(switch_packet);
             },
             Some(SwitchPayload::Control(ControlPacket::Pong { opaque_data, .. })) => {
                 assert_eq!(opaque_data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
@@ -139,13 +193,18 @@ impl Switch {
                     }
                 };
                 let (inner_conn, inner_packet) = Wrapper::new_incoming_connection(self.my_pk, self.my_sk.clone(), Credentials::None, None, Some(handle), handshake.clone()).unwrap();
-                self.inner_conns.insert(handle, inner_conn);
+                let path = {
+                    let mut path = switch_packet.label();
+                    reverse_label(&mut path);
+                    path
+                };
+                self.inner_conns.insert(handle, (path, inner_conn));
                 self.on_inner_ca_message(switch_packet, handle, inner_packet);
-                self.random_send_ping(switch_packet);
+                self.random_send_switch_ping(switch_packet);
             },
             Some(SwitchPayload::Other(handle, ca_message)) => {
                 let inner_packets = match self.inner_conns.get_mut(&handle) {
-                    Some(inner_conn) => {
+                    Some(&mut (_path, ref mut inner_conn)) => {
                         match inner_conn.unwrap_message(ca_message) {
                             Ok(inner_packets) => inner_packets,
                             Err(e) => panic!("CA error: {:?}", e),

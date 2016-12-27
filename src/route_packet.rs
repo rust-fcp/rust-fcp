@@ -14,9 +14,10 @@ pub struct RoutePacket {
     pub encoding_index: Option<i64>,
     pub encoding_scheme: Option<Vec<u8>>,
     pub nodes: Option<Vec<u8>>,
+    pub node_protocol_versions: Option<Vec<u8>>,
     pub target_address: Option<Vec<u8>>,
     pub transaction_id: Vec<u8>,
-    pub version: i64,
+    pub protocol_version: i64,
 }
 
 pub enum DecodeError {
@@ -34,16 +35,26 @@ impl RoutePacket {
             Ok(v) => return Err(HelperDecodeError::BadType(format!("Expected dict at root, got: {:?}", v))),
             Err(e) => return Err(HelperDecodeError::BencodeDecodeError(e)),
         };
-        println!("{:?}", map);
-        println!("{:?}", map.keys().collect::<Vec<_>>().into_iter().map(|v| String::from_utf8(v.clone()).unwrap()).collect::<Vec<String>>()); // DEBUG: to show the keys in the messages
+        //println!("{:?}", map);
+        //println!("{:?}", map.keys().collect::<Vec<_>>().into_iter().map(|v| String::from_utf8(v.clone()).unwrap()).collect::<Vec<String>>()); // DEBUG: to show the keys in the messages
         let query = try!(simple_bencode::decoding_helpers::pop_value_utf8_string_option(&mut map, "q".to_owned()));
         let encoding_index = try!(simple_bencode::decoding_helpers::pop_value_integer_option(&mut map, "ei".to_owned()));
         let encoding_scheme = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "es".to_owned()));
         let nodes = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "n".to_owned()));
+        let node_protocol_versions = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "np".to_owned()));
         let target_address = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "tar".to_owned()));
         let transaction_id = try!(simple_bencode::decoding_helpers::pop_value_bytestring(&mut map, "txid".to_owned()));
-        let version = try!(simple_bencode::decoding_helpers::pop_value_integer(&mut map, "p".to_owned()));
-        Ok(RoutePacket { query: query, encoding_index: encoding_index, encoding_scheme: encoding_scheme, nodes: nodes, target_address: target_address, transaction_id: transaction_id, version: version })
+        let protocol_version = try!(simple_bencode::decoding_helpers::pop_value_integer(&mut map, "p".to_owned()));
+        Ok(RoutePacket {
+            query: query,
+            encoding_index: encoding_index,
+            encoding_scheme: encoding_scheme,
+            nodes: nodes,
+            node_protocol_versions: node_protocol_versions,
+            target_address: target_address,
+            transaction_id: transaction_id,
+            protocol_version: protocol_version,
+            })
     }
 
     pub fn encode(self) -> Vec<u8> {
@@ -52,9 +63,10 @@ impl RoutePacket {
         self.encoding_index.map(|ei| map.insert(b"ei".to_vec(), BValue::Integer(ei)));
         self.encoding_scheme.map(|es| map.insert(b"es".to_vec(), BValue::String(es)));
         self.nodes.map(|n| map.insert(b"n".to_vec(), BValue::String(n)));
+        self.node_protocol_versions.map(|np| map.insert(b"np".to_vec(), BValue::String(np)));
         self.target_address.map(|tar| map.insert(b"tar".to_vec(), BValue::String(tar)));
         map.insert(b"txid".to_vec(), BValue::String(self.transaction_id));
-        map.insert(b"p".to_vec(), BValue::Integer(self.version));
+        map.insert(b"p".to_vec(), BValue::Integer(self.protocol_version));
         simple_bencode::encode(&BValue::Dictionary(map))
     }
 }
