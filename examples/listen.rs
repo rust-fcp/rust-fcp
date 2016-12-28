@@ -8,6 +8,7 @@ use byteorder::BigEndian;
 use byteorder::ByteOrder;
 
 use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv6Addr};
+use std::iter::FromIterator;
 use std::collections::HashMap;
 
 use fcp_cryptoauth::wrapper::*;
@@ -19,6 +20,7 @@ use fcp_switching::control::ControlPacket;
 use fcp_switching::route_packet::RoutePacket;
 use fcp_switching::data_packet::DataPacket;
 use fcp_switching::data_packet::Payload as DataPayload;
+use fcp_switching::encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 
 use hex::ToHex;
 use rand::Rng;
@@ -126,7 +128,8 @@ impl Switch {
                 println!("Announcing one peer, with path: {}", path.to_vec().to_hex());
             }
         }
-        let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: None, nodes: Some(nodes), node_protocol_versions: Some(node_protocol_versions), encoding_index: Some(0), encoding_scheme: Some(vec![0b011_00000, 0b00]), transaction_id: route_packet.transaction_id.clone(), protocol_version: 18, target_address: None }));
+        let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
+        let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: None, nodes: Some(nodes), node_protocol_versions: Some(node_protocol_versions), encoding_index: Some(0), encoding_scheme: Some(encoding_scheme.into_bytes()), transaction_id: route_packet.transaction_id.clone(), protocol_version: 18, target_address: None }));
         let responses: Vec<_>;
         {
             let &mut (_path, ref mut inner_conn) = self.inner_conns.get_mut(&handle).unwrap();
@@ -150,7 +153,8 @@ impl Switch {
             }
         }
         if rand::thread_rng().next_u32() > 0xafffffff {
-            let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: Some("gp".to_owned()), nodes: None, node_protocol_versions: None, encoding_index: Some(0), encoding_scheme: Some(vec![0b011_00000, 0b00]), transaction_id: b"blah".to_vec(), protocol_version: 18, target_address: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]) }));
+            let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
+            let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: Some("gp".to_owned()), nodes: None, node_protocol_versions: None, encoding_index: Some(0), encoding_scheme: Some(encoding_scheme.into_bytes()), transaction_id: b"blah".to_vec(), protocol_version: 18, target_address: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]) }));
             let mut responses = Vec::new();
             {
                 let &mut (_path, ref mut inner_conn) = self.inner_conns.get_mut(&handle).unwrap();
