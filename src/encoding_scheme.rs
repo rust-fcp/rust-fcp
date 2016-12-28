@@ -1,12 +1,25 @@
+//! Contains structures used for announcing and decoding the Encoding
+//! Scheme, as defined in https://github.com/cjdelisle/cjdns/blob/cjdns-v18/doc/Whitepaper.md#encoding-schemes
+//!
+//! EncodingScheme can be constructed either from bytes (ie. from the network)
+//! or from an interator on `EncodingSchemeForm`.
+//! Its content can be accessed either by writing it to bytes (ie. to the
+//! network) or by turning it `into_iter`ator of `EncodingSchemeForm`.
+
 use std::iter::FromIterator;
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+/// An item of the Encoding Scheme.
+/// See https://github.com/cjdelisle/cjdns/blob/cjdns-v18/doc/Whitepaper.md#definitions
+/// for its definition.
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct EncodingSchemeForm {
     pub prefix: u64,
     pub bit_count: u8,
     pub prefix_length: u8,
 }
 
+/// A list of `EncodingSchemeForm`. Can be serialized to/deserialized from
+/// bytes, and constructed from/read to an iterator of `EncodingSchemeForm`.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct EncodingScheme {
     bytes: Vec<u8>,
@@ -35,6 +48,8 @@ impl IntoIterator for EncodingScheme {
     }
 }
 
+/// Iterator of `EncodingSchemeForm`, constructed from an instance of
+/// `EncodingScheme`
 #[derive(Debug)]
 pub struct EncodingSchemeIterator {
     bytes: Vec<u8>,
