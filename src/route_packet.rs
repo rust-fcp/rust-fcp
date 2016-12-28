@@ -78,10 +78,16 @@ mod tests {
 
     #[test]
     fn test_fn() {
-        let s = "d1:q2:fn3:tar16:abcdefghhijklmno4:txid5:12345e".as_bytes();
-        let m = RoutePacket::FindNode {
-            target_address: "abcdefghhijklmno".to_owned(),
-            transaction_id: b"12345".to_vec()
+        let s = "d1:pi18e1:q2:fn3:tar16:abcdefghhijklmno4:txid5:12345e".as_bytes();
+        let m = RoutePacket {
+            query: Some("fn".to_owned()),
+            encoding_index: None,
+            encoding_scheme: None,
+            nodes: None,
+            node_protocol_versions: None,
+            target_address: Some(b"abcdefghhijklmno".to_vec()),
+            transaction_id: b"12345".to_vec(),
+            protocol_version: 18,
         };
 
         let s_decoded = RoutePacket::decode(s);
@@ -93,10 +99,16 @@ mod tests {
 
     #[test]
     fn test_n() {
-        let s = "d1:n80:cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde23456784:txid5:12345e".as_bytes();
-        let m = RoutePacket::Nodes {
-            nodes: "cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde2345678".to_owned(),
-            transaction_id: b"12345".to_vec()
+        let s = "d1:n80:cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde23456781:pi18e4:txid5:12345e".as_bytes();
+        let m = RoutePacket {
+            query: None,
+            encoding_index: None,
+            encoding_scheme: None,
+            nodes: Some(b"cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde2345678".to_vec()),
+            node_protocol_versions: None,
+            target_address: None,
+            transaction_id: b"12345".to_vec(),
+            protocol_version: 18,
         };
 
         let s_decoded = RoutePacket::decode(s);
