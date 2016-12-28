@@ -17,7 +17,7 @@ use fcp_switching::switch_packet::SwitchPacket;
 use fcp_switching::switch_packet::Payload as SwitchPayload;
 use fcp_switching::operation::{RoutingDecision, reverse_label};
 use fcp_switching::control::ControlPacket;
-use fcp_switching::route_packet::RoutePacket;
+use fcp_switching::route_packet::{RoutePacket, RoutePacketBuilder};
 use fcp_switching::data_packet::DataPacket;
 use fcp_switching::data_packet::Payload as DataPayload;
 use fcp_switching::encoding_scheme::{EncodingScheme, EncodingSchemeForm};
@@ -129,7 +129,13 @@ impl Switch {
             }
         }
         let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
-        let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: None, nodes: Some(nodes), node_protocol_versions: Some(node_protocol_versions), encoding_index: Some(0), encoding_scheme: Some(encoding_scheme.into_bytes()), transaction_id: route_packet.transaction_id.clone(), protocol_version: 18, target_address: None }));
+        let route_packet = RoutePacketBuilder::new(18, route_packet.transaction_id.clone())
+                .nodes(nodes)
+                .node_protocol_versions(node_protocol_versions)
+                .encoding_index(0)
+                .encoding_scheme(encoding_scheme.into_bytes())
+                .finalize();
+        let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
         let responses: Vec<_>;
         {
             let &mut (_path, ref mut inner_conn) = self.inner_conns.get_mut(&handle).unwrap();

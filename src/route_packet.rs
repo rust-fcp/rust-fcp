@@ -71,6 +71,56 @@ impl RoutePacket {
     }
 }
 
+pub struct RoutePacketBuilder {
+    packet: RoutePacket,
+}
+
+impl RoutePacketBuilder {
+    pub fn new(protocol_version: i64, transaction_id: Vec<u8>) -> RoutePacketBuilder {
+        RoutePacketBuilder {
+            packet: RoutePacket {
+                query: None,
+                encoding_index: None,
+                encoding_scheme: None,
+                nodes: None,
+                node_protocol_versions: None,
+                target_address: None,
+                transaction_id: transaction_id,
+                protocol_version: protocol_version,
+            }
+        }
+    }
+
+    pub fn query(mut self, query: String) -> RoutePacketBuilder {
+        self.packet.query = Some(query);
+        self
+    }
+    pub fn encoding_index(mut self, encoding_index: i64) -> RoutePacketBuilder {
+        self.packet.encoding_index = Some(encoding_index);
+        self
+    }
+    pub fn encoding_scheme(mut self, encoding_scheme: Vec<u8>) -> RoutePacketBuilder {
+        self.packet.encoding_scheme = Some(encoding_scheme);
+        self
+    }
+    pub fn nodes(mut self, nodes: Vec<u8>) -> RoutePacketBuilder {
+        self.packet.nodes = Some(nodes);
+        self
+    }
+    pub fn node_protocol_versions(mut self, node_protocol_versions: Vec<u8>) -> RoutePacketBuilder {
+        self.packet.node_protocol_versions = Some(node_protocol_versions);
+        self
+    }
+    pub fn target_address(mut self, target_address: Vec<u8>) -> RoutePacketBuilder {
+        self.packet.target_address = Some(target_address);
+        self
+    }
+
+    pub fn finalize(self) -> RoutePacket {
+        self.packet
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -79,16 +129,10 @@ mod tests {
     #[test]
     fn test_fn() {
         let s = "d1:pi18e1:q2:fn3:tar16:abcdefghhijklmno4:txid5:12345e".as_bytes();
-        let m = RoutePacket {
-            query: Some("fn".to_owned()),
-            encoding_index: None,
-            encoding_scheme: None,
-            nodes: None,
-            node_protocol_versions: None,
-            target_address: Some(b"abcdefghhijklmno".to_vec()),
-            transaction_id: b"12345".to_vec(),
-            protocol_version: 18,
-        };
+        let m = RoutePacketBuilder::new(18, b"12345".to_vec())
+                .query("fn".to_owned())
+                .target_address(b"abcdefghhijklmno".to_vec())
+                .finalize();
 
         let s_decoded = RoutePacket::decode(s);
         let m_encoded = m.clone().encode();
@@ -100,16 +144,9 @@ mod tests {
     #[test]
     fn test_n() {
         let s = "d1:n80:cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde23456781:pi18e4:txid5:12345e".as_bytes();
-        let m = RoutePacket {
-            query: None,
-            encoding_index: None,
-            encoding_scheme: None,
-            nodes: Some(b"cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde2345678".to_vec()),
-            node_protocol_versions: None,
-            target_address: None,
-            transaction_id: b"12345".to_vec(),
-            protocol_version: 18,
-        };
+        let m = RoutePacketBuilder::new(18, b"12345".to_vec())
+                .nodes(b"cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde2345678".to_vec())
+                .finalize();
 
         let s_decoded = RoutePacket::decode(s);
         let m_encoded = m.clone().encode();
