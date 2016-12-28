@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use fcp_cryptoauth::wrapper::*;
 
-use fcp_switching::switch_packet::{SwitchPacket, PacketType};
+use fcp_switching::switch_packet::SwitchPacket;
 use fcp_switching::switch_packet::Payload as SwitchPayload;
 use fcp_switching::operation::{RoutingDecision, reverse_label};
 use fcp_switching::control::ControlPacket;
@@ -31,11 +31,11 @@ struct Interface {
 
 fn make_reply(switch_packet: &SwitchPacket, packet_response: Vec<u8>, inner_conn: &Wrapper<()>) -> SwitchPacket {
     if BigEndian::read_u32(&packet_response[0..4]) < 4 {
-        SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::CryptoAuthHandshake(packet_response)).unwrap()
+        SwitchPacket::new_reply(&switch_packet, SwitchPayload::CryptoAuthHandshake(packet_response))
     }
     else {
         let peer_handle = inner_conn.peer_session_handle().unwrap();
-        SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Other(peer_handle, packet_response)).unwrap()
+        SwitchPacket::new_reply(&switch_packet, SwitchPayload::Other(peer_handle, packet_response))
     }
 }
 
@@ -77,7 +77,7 @@ impl Switch {
     fn random_send_switch_ping(&mut self, switch_packet: &SwitchPacket) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let ping = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
-            let mut packet_response = SwitchPacket::new_reply(&switch_packet, &PacketType::Opaque, SwitchPayload::Control(ping)).unwrap();
+            let mut packet_response = SwitchPacket::new_reply(&switch_packet, SwitchPayload::Control(ping));
             self.send(&mut packet_response, 0b001);
         }
     }
@@ -169,7 +169,7 @@ impl Switch {
         match switch_packet.payload() {
             Some(SwitchPayload::Control(ControlPacket::Ping { opaque_data, .. })) => {
                 let control_response = ControlPacket::Pong { version: 18, opaque_data: opaque_data };
-                let mut packet_response = SwitchPacket::new_reply(switch_packet, &PacketType::Opaque, SwitchPayload::Control(control_response)).unwrap();
+                let mut packet_response = SwitchPacket::new_reply(switch_packet, SwitchPayload::Control(control_response));
                 self.send(&mut packet_response, 0b001);
 
                 self.random_send_switch_ping(switch_packet);

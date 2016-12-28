@@ -9,12 +9,6 @@ use operation::{switch, reverse_label, Director, RoutingDecision, Label};
 use control::ControlPacket;
 
 #[derive(Debug)]
-pub enum PacketType {
-    Opaque,
-    SwitchControlMessage,
-}
-
-#[derive(Debug)]
 pub enum Payload {
     CryptoAuthHandshake(Vec<u8>),
     Control(ControlPacket),
@@ -29,13 +23,9 @@ pub struct SwitchPacket {
 }
 
 impl SwitchPacket {
-    pub fn new(route_label: &[u8; 8], type_: &PacketType, payload: Payload) -> SwitchPacket {
+    pub fn new(route_label: &[u8; 8], payload: Payload) -> SwitchPacket {
         let mut raw = vec![0u8; 12];
         raw[0..8].copy_from_slice(route_label);
-        raw[8] = match *type_ {
-            PacketType::Opaque => 0u8,
-            PacketType::SwitchControlMessage => 1u8,
-        };
         match payload {
             Payload::CryptoAuthHandshake(mut msg) => {
                 let session_state = BigEndian::read_u32(&msg[0..4]);
@@ -60,28 +50,10 @@ impl SwitchPacket {
     }
 
     /// Returns a new packet, constructed as a reply of a received one.
-    pub fn new_reply(received: &SwitchPacket, type_: &PacketType, payload: Payload) -> Option<SwitchPacket> {
-        match received.packet_type() {
-            Ok(PacketType::SwitchControlMessage) => {
-                // Should not reply to these
-                None
-            }
-            _ => {
-                let mut response_label = received.label();
-                reverse_label(&mut response_label);
-                Some(SwitchPacket::new(&response_label, type_, payload))
-            }
-        }
-    }
-
-    /// Returns the type of the packet. Errors with the type number if
-    /// the type number is unknown.
-    pub fn packet_type(&self) -> Result<PacketType, u8> {
-        match self.raw[8] {
-            0u8 => Ok(PacketType::Opaque),
-            1u8 => Ok(PacketType::SwitchControlMessage),
-            n => Err(n),
-        }
+    pub fn new_reply(received: &SwitchPacket, payload: Payload) -> SwitchPacket {
+        let mut response_label = received.label();
+        reverse_label(&mut response_label);
+        SwitchPacket::new(&response_label, payload)
     }
 
     /// Returns the address label of the packet.
@@ -160,7 +132,7 @@ mod test {
             _ => panic!("routed to non-self interface."),
         };
         let control_response = ControlPacket::Pong { version: 17, opaque_data: opaque_data };
-        let mut response = SwitchPacket::new_reply(&received, &PacketType::Opaque, Payload::Control(control_response)).unwrap();
+        let mut response = SwitchPacket::new_reply(&received, Payload::Control(control_response));
         let decision = response.switch(4, &0b1000);
         assert_eq!(decision, RoutingDecision::Forward(0b0011));
         assert_eq!(response.raw, Vec::from_hex("800000000000000100000000ffffffff33b000049d74e35b00000011467c6febbde26264a38cd12e").unwrap());
