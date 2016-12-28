@@ -147,12 +147,6 @@ impl Switch {
                 if route_packet.query == Some("gp".to_owned()) {
                     self.reply_getpeers(switch_packet, &route_packet, handle);
                 }
-                else if route_packet.query == Some("fn".to_owned()) {
-                    self.reply_getpeers(switch_packet, &route_packet, handle);
-                }
-                else if route_packet.query == Some("pn".to_owned()) {
-                    self.reply_getpeers(switch_packet, &route_packet, handle);
-                }
             }
         }
         if rand::thread_rng().next_u32() > 0xafffffff {
