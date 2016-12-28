@@ -133,7 +133,7 @@ impl Switch {
                 .nodes(nodes)
                 .node_protocol_versions(node_protocol_versions)
                 .encoding_index(0)
-                .encoding_scheme(encoding_scheme.into_bytes())
+                .encoding_scheme(encoding_scheme)
                 .finalize();
         let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
         let responses: Vec<_>;
@@ -160,7 +160,13 @@ impl Switch {
         }
         if rand::thread_rng().next_u32() > 0xafffffff {
             let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
-            let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(RoutePacket { query: Some("gp".to_owned()), nodes: None, node_protocol_versions: None, encoding_index: Some(0), encoding_scheme: Some(encoding_scheme.into_bytes()), transaction_id: b"blah".to_vec(), protocol_version: 18, target_address: Some(vec![0, 0, 0, 0, 0, 0, 0, 0]) }));
+            let route_packet = RoutePacketBuilder::new(18, b"blah".to_vec())
+                    .query("gp".to_owned())
+                    .encoding_index(0)
+                    .encoding_scheme(encoding_scheme)
+                    .target_address(vec![0, 0, 0, 0, 0, 0, 0, 0])
+                    .finalize();
+            let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
             let mut responses = Vec::new();
             {
                 let &mut (_path, ref mut inner_conn) = self.inner_conns.get_mut(&handle).unwrap();

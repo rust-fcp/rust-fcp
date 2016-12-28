@@ -7,17 +7,14 @@ pub struct EncodingSchemeForm {
     pub prefix_length: u8,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct EncodingScheme {
     bytes: Vec<u8>,
-    window: u64, // integer view of a slice of the buffer (in little endian)
-    bits_in_window: u8,
-    bytes_offset: usize,
 }
 
 impl EncodingScheme {
     pub fn new(bytes: Vec<u8>) -> EncodingScheme {
-        EncodingScheme { bytes: bytes, window: 0, bits_in_window: 0, bytes_offset: 0 }
+        EncodingScheme { bytes: bytes }
     }
 
     pub fn bytes(&self) -> &Vec<u8> {
@@ -29,7 +26,24 @@ impl EncodingScheme {
     }
 }
 
-impl Iterator for EncodingScheme {
+impl IntoIterator for EncodingScheme {
+    type Item = EncodingSchemeForm;
+    type IntoIter = EncodingSchemeIterator;
+
+    fn into_iter(self) -> EncodingSchemeIterator {
+        EncodingSchemeIterator { bytes: self.bytes, window: 0, bits_in_window: 0, bytes_offset: 0 }
+    }
+}
+
+#[derive(Debug)]
+pub struct EncodingSchemeIterator {
+    bytes: Vec<u8>,
+    window: u64, // integer view of a slice of the buffer (in little endian)
+    bits_in_window: u8,
+    bytes_offset: usize,
+}
+
+impl Iterator for EncodingSchemeIterator {
     type Item = EncodingSchemeForm;
 
     fn next(&mut self) -> Option<EncodingSchemeForm> {
@@ -110,8 +124,8 @@ mod tests {
 
         assert_eq!(EncodingScheme::new(encoding.clone()).into_bytes(), encoding);
         assert_eq!(EncodingScheme::from_iter(forms.iter()).into_bytes(), encoding);
-        assert_eq!(EncodingScheme::new(encoding.clone()).collect::<Vec<_>>(), forms);
-        assert_eq!(EncodingScheme::from_iter(forms.iter()).collect::<Vec<_>>(), forms);
+        assert_eq!(EncodingScheme::new(encoding.clone()).into_iter().collect::<Vec<_>>(), forms);
+        assert_eq!(EncodingScheme::from_iter(forms.iter()).into_iter().collect::<Vec<_>>(), forms);
     }
 
     /// From https://github.com/cjdelisle/cjdns/blob/cjdns-v18/switch/test/EncodingScheme_test.c#L121-L158
@@ -138,7 +152,7 @@ mod tests {
 
         assert_eq!(EncodingScheme::new(encoding.clone()).into_bytes(), encoding);
         assert_eq!(EncodingScheme::from_iter(forms.iter()).into_bytes(), encoding);
-        assert_eq!(EncodingScheme::new(encoding.clone()).collect::<Vec<_>>(), forms);
-        assert_eq!(EncodingScheme::from_iter(forms.iter()).collect::<Vec<_>>(), forms);
+        assert_eq!(EncodingScheme::new(encoding.clone()).into_iter().collect::<Vec<_>>(), forms);
+        assert_eq!(EncodingScheme::from_iter(forms.iter()).into_iter().collect::<Vec<_>>(), forms);
     }
 }

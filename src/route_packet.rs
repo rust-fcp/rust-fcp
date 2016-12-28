@@ -5,6 +5,8 @@ use simple_bencode;
 use simple_bencode::Value as BValue;
 use simple_bencode::decoding_helpers::HelperDecodeError;
 
+use encoding_scheme::EncodingScheme;
+
 #[derive(Debug)]
 #[derive(Eq)]
 #[derive(PartialEq)]
@@ -12,7 +14,7 @@ use simple_bencode::decoding_helpers::HelperDecodeError;
 pub struct RoutePacket {
     pub query: Option<String>,
     pub encoding_index: Option<i64>,
-    pub encoding_scheme: Option<Vec<u8>>,
+    pub encoding_scheme: Option<EncodingScheme>,
     pub nodes: Option<Vec<u8>>,
     pub node_protocol_versions: Option<Vec<u8>>,
     pub target_address: Option<Vec<u8>>,
@@ -39,7 +41,7 @@ impl RoutePacket {
         //println!("{:?}", map.keys().collect::<Vec<_>>().into_iter().map(|v| String::from_utf8(v.clone()).unwrap()).collect::<Vec<String>>()); // DEBUG: to show the keys in the messages
         let query = try!(simple_bencode::decoding_helpers::pop_value_utf8_string_option(&mut map, "q".to_owned()));
         let encoding_index = try!(simple_bencode::decoding_helpers::pop_value_integer_option(&mut map, "ei".to_owned()));
-        let encoding_scheme = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "es".to_owned()));
+        let encoding_scheme = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "es".to_owned())).map(EncodingScheme::new);
         let nodes = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "n".to_owned()));
         let node_protocol_versions = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "np".to_owned()));
         let target_address = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "tar".to_owned()));
@@ -61,7 +63,7 @@ impl RoutePacket {
         let mut map = HashMap::new();
         self.query.map(|q| map.insert(b"q".to_vec(), BValue::String(q.into_bytes().to_vec())));
         self.encoding_index.map(|ei| map.insert(b"ei".to_vec(), BValue::Integer(ei)));
-        self.encoding_scheme.map(|es| map.insert(b"es".to_vec(), BValue::String(es)));
+        self.encoding_scheme.map(|es| map.insert(b"es".to_vec(), BValue::String(es.into_bytes())));
         self.nodes.map(|n| map.insert(b"n".to_vec(), BValue::String(n)));
         self.node_protocol_versions.map(|np| map.insert(b"np".to_vec(), BValue::String(np)));
         self.target_address.map(|tar| map.insert(b"tar".to_vec(), BValue::String(tar)));
@@ -99,7 +101,7 @@ impl RoutePacketBuilder {
         self.packet.encoding_index = Some(encoding_index);
         self
     }
-    pub fn encoding_scheme(mut self, encoding_scheme: Vec<u8>) -> RoutePacketBuilder {
+    pub fn encoding_scheme(mut self, encoding_scheme: EncodingScheme) -> RoutePacketBuilder {
         self.packet.encoding_scheme = Some(encoding_scheme);
         self
     }
