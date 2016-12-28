@@ -5,12 +5,22 @@ use simple_bencode;
 use simple_bencode::Value as BValue;
 use simple_bencode::decoding_helpers::HelperDecodeError;
 
+use byteorder::BigEndian;
+use byteorder::ByteOrder;
+
 use encoding_scheme::EncodingScheme;
 
-#[derive(Debug)]
-#[derive(Eq)]
-#[derive(PartialEq)]
-#[derive(Clone)]
+const PUBLIC_KEY_LENGTH: usize = 32;
+const PATH_LENGTH: usize = 8;
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct Node {
+    pub public_key: Vec<u8>,
+    pub path: u64,
+    pub version: u64,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct RoutePacket {
     pub query: Option<String>,
     pub encoding_index: Option<i64>,
@@ -70,6 +80,90 @@ impl RoutePacket {
         map.insert(b"txid".to_vec(), BValue::String(self.transaction_id));
         map.insert(b"p".to_vec(), BValue::Integer(self.protocol_version));
         simple_bencode::encode(&BValue::Dictionary(map))
+    }
+
+    /// Check self.nodes and self.node_protocol_versions are consistant,
+    /// and return (nb, nodes, version_length, versions), which are
+    /// useful for decoding.
+    fn check_nodes(&self) -> Result<(usize, &Vec<u8>, usize, &Vec<u8>), String> {
+        match (&self.nodes, &self.node_protocol_versions) { // the & are hacks to help the borrow checker by not moving the values in a tuple.
+            (&Some(ref nodes), &Some(ref versions)) => {
+                match versions.get(0) {
+                    Some(&version_length) => {
+                        let version_length = version_length as usize;
+                        if nodes.len() % (PUBLIC_KEY_LENGTH+PATH_LENGTH) != 0 {
+                            Err("Node list ('n') does not contain an integer number of items.".to_owned())
+                        }
+                        else if (versions.len()-1) % version_length != 0 {
+                            Err("Node version list ('np') does not contain an integer number of items.".to_owned())
+                        }
+                        else if nodes.len() / (PUBLIC_KEY_LENGTH+PATH_LENGTH) != (versions.len()-1) / version_length {
+                            Err("Length mismatch between node list ('n') and node version list ('np')".to_owned())
+                        }
+                        else {
+                            let nb = (versions.len()-1) / version_length;
+                            Ok((nb, nodes, version_length, versions))
+                        }
+                    },
+                    None => Err("Version string ('np') empty.".to_owned()),
+                }
+            }
+            _ => Err("Node list ('n') and/or node version list ('np') is not provided.".to_owned())
+        }
+    }
+
+    /// Parses `self.nodes` and `self.node_protocol_versions` together.
+    ///
+    /// ```
+    /// # use fcp_switching::route_packet::*;
+    /// # let packet = RoutePacket::decode(&vec![100,50,58,101,105,105,48,101,50,58,101,115,53,58,97,20,69,129,0,49,58,110,49,50,48,58,130,223,186,81,37,25,242,89,134,192,176,47,101,127,172,39,50,222,248,255,202,29,7,104,145,198,13,140,88,35,113,111,0,0,0,0,0,0,0,21,14,212,108,34,167,28,34,202,98,134,15,159,58,151,12,228,58,163,181,163,40,102,66,125,212,44,203,100,174,56,120,61,0,0,0,0,0,0,0,19,2,134,254,75,44,62,116,254,79,92,235,47,82,76,129,250,190,138,148,250,65,218,166,83,148,144,15,83,7,157,10,20,0,0,0,0,0,0,0,1,50,58,110,112,52,58,1,18,17,18,49,58,112,105,49,56,101,52,58,116,120,105,100,52,58,98,108,97,104,101]).unwrap();
+    /// // let packet = RoutePacket::decode(<< d2:eii0e2:es5:a\x14E\x81\x001:n120:\x82\xdf\xbaQ%\x19\xf2Y\x86\xc0\xb0/e\x7f\xac\'2\xde\xf8\xff\xca\x1d\x07h\x91\xc6\r\x8cX#qo\x00\x00\x00\x00\x00\x00\x00\x15\x0e\xd4l"\xa7\x1c"\xcab\x86\x0f\x9f:\x97\x0c\xe4:\xa3\xb5\xa3(fB}\xd4,\xcbd\xae8x=\x00\x00\x00\x00\x00\x00\x00\x13\x02\x86\xfeK,>t\xfeO\\\xeb/RL\x81\xfa\xbe\x8a\x94\xfaA\xda\xa6S\x94\x90\x0fS\x07\x9d\n\x14\x00\x00\x00\x00\x00\x00\x00\x012:np4:\x01\x12\x11\x121:pi18e4:txid4:blahe >>)
+    /// let nodes = packet.read_nodes().unwrap();
+    /// let expected1 = Node {
+    ///         public_key: vec![130,223,186,81,37,25,242,89,134,192,176,47,101,127,172,39,50,222,248,255,202,29,7,104,145,198,13,140,88,35,113,111],
+    ///         path: 0x15,
+    ///         version: 18,
+    ///     };
+    /// let expected2 = Node {
+    ///         public_key: vec![14,212,108,34,167,28,34,202,98,134,15,159,58,151,12,228,58,163,181,163,40,102,66,125,212,44,203,100,174,56,120,61],
+    ///         path: 0x13,
+    ///         version: 17,
+    ///     };
+    /// let expected3 = Node {
+    ///         public_key: vec![2,134,254,75,44,62,116,254,79,92,235,47,82,76,129,250,190,138,148,250,65,218,166,83,148,144,15,83,7,157,10,20],
+    ///         path: 0x01,
+    ///         version: 18,
+    ///     };
+    /// assert_eq!(nodes.len(), 3);
+    /// assert_eq!(nodes[0], expected1);
+    /// assert_eq!(nodes[1], expected2);
+    /// assert_eq!(nodes[2], expected3);
+    /// ```
+    pub fn read_nodes(&self) -> Result<Vec<Node>, String> {
+        let (nb, nodes, version_length, versions) = try!(self.check_nodes());
+
+        let mut result = Vec::new();
+        result.reserve(nb);
+        for i in 0..nb {
+            let node_start = i*(PUBLIC_KEY_LENGTH+PATH_LENGTH);
+
+            let public_key = nodes[node_start..node_start+PUBLIC_KEY_LENGTH].to_vec();
+
+            let path = BigEndian::read_u64(&nodes[node_start+PUBLIC_KEY_LENGTH..node_start+PUBLIC_KEY_LENGTH+PATH_LENGTH]);
+
+            let mut version = 0u64;
+            for j in 1+i*version_length..1+(i+1)*version_length { // 1+ is the offset caused by the first byte being decoded as 'version_length'
+                version = (version << 8) + (versions[j] as u64);
+            }
+
+            let node = Node {
+                public_key: public_key,
+                path: path,
+                version: version,
+            };
+            result.push(node);
+        }
+        Ok(result)
     }
 }
 
