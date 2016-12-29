@@ -114,7 +114,7 @@ impl Switch {
             my_pk.copy_from_slice(&self.my_pk.0);
             nodes.push(Node {
                 public_key: my_pk,
-                path: 0b001,
+                path: [0, 0, 0, 0, 0, 0, 0, 0b001],
                 version: 18,
             });
         }
@@ -124,7 +124,7 @@ impl Switch {
                 pk.copy_from_slice(&inner_conn.their_pk().0);
                 nodes.push(Node {
                     public_key: pk,
-                    path: BigEndian::read_u64(&path.clone()),
+                    path: path,
                     version: 18, // TODO
                 });
                 println!("Announcing one peer, with path: {}", path.to_vec().to_hex());

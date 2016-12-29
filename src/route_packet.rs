@@ -8,18 +8,18 @@ use simple_bencode;
 use simple_bencode::Value as BValue;
 use simple_bencode::decoding_helpers::HelperDecodeError;
 
-use byteorder::BigEndian;
-use byteorder::ByteOrder;
-
 use encoding_scheme::EncodingScheme;
+use operation::Label;
 
 const PUBLIC_KEY_LENGTH: usize = 32;
 const PATH_LENGTH: usize = 8;
 
+/// Represents a cjdns node, with its public key, path through the network,
+/// and protocol version.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Node {
     pub public_key: [u8; PUBLIC_KEY_LENGTH],
-    pub path: u64,
+    pub path: Label,
     pub version: u64,
 }
 
@@ -147,7 +147,8 @@ impl RoutePacket {
             let mut public_key = [0u8; PUBLIC_KEY_LENGTH];
             public_key.copy_from_slice(&nodes[node_start..node_start+PUBLIC_KEY_LENGTH]);
 
-            let path = BigEndian::read_u64(&nodes[node_start+PUBLIC_KEY_LENGTH..node_start+PUBLIC_KEY_LENGTH+PATH_LENGTH]);
+            let mut path = [0u8; 8];
+            path.copy_from_slice(&nodes[node_start+PUBLIC_KEY_LENGTH..node_start+PUBLIC_KEY_LENGTH+PATH_LENGTH]);
 
             let mut version = 0u64;
             for j in 1+i*version_length..1+(i+1)*version_length { // 1+ is the offset caused by the first byte being decoded as 'version_length'
@@ -174,7 +175,7 @@ impl RoutePacket {
         for (i, node) in nodes.iter().enumerate() {
             let bytes_start = i*(PUBLIC_KEY_LENGTH+PATH_LENGTH);
             node_bytes[bytes_start..bytes_start+PUBLIC_KEY_LENGTH].copy_from_slice(&node.public_key);
-            BigEndian::write_u64(&mut node_bytes[bytes_start+PUBLIC_KEY_LENGTH..bytes_start+PUBLIC_KEY_LENGTH+PATH_LENGTH], node.path);
+            node_bytes[bytes_start+PUBLIC_KEY_LENGTH..bytes_start+PUBLIC_KEY_LENGTH+PATH_LENGTH].copy_from_slice(&node.path);
         }
 
         self.node_protocol_versions = Some(node_version_bytes);
@@ -289,17 +290,17 @@ mod tests {
         let nodes = packet.read_nodes().unwrap();
         let expected1 = Node {
                 public_key: [130,223,186,81,37,25,242,89,134,192,176,47,101,127,172,39,50,222,248,255,202,29,7,104,145,198,13,140,88,35,113,111],
-                path: 0x15,
+                path: [0, 0, 0, 0, 0, 0, 0, 0x15],
                 version: 18,
             };
         let expected2 = Node {
                 public_key: [14,212,108,34,167,28,34,202,98,134,15,159,58,151,12,228,58,163,181,163,40,102,66,125,212,44,203,100,174,56,120,61],
-                path: 0x13,
+                path: [0, 0, 0, 0, 0, 0, 0, 0x13],
                 version: 17,
             };
         let expected3 = Node {
                 public_key: [2,134,254,75,44,62,116,254,79,92,235,47,82,76,129,250,190,138,148,250,65,218,166,83,148,144,15,83,7,157,10,20],
-                path: 0x01,
+                path: [0, 0, 0, 0, 0, 0, 0, 0x01],
                 version: 18,
             };
         assert_eq!(nodes.len(), 3);
