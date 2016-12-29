@@ -1,3 +1,6 @@
+//! Contains the `RoutePacket` structure, which is used to represent
+//! a packet exchanged by switches and routers to advertise routes.
+
 use std::collections::HashMap;
 use std::string::FromUtf8Error;
 
@@ -20,18 +23,36 @@ pub struct Node {
     pub version: u64,
 }
 
+/// A packet exchanged by switches and routers to advertise routes.
+///
+/// Described here: https://github.com/cjdelisle/cjdns/blob/cjdns-v18/doc/Whitepaper.md#the-router
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct RoutePacket {
+    /// The type of query. May be absent (a response), `fn` (find node),
+    /// `gp` (get peers), `pn` (ping node), etc.
     pub query: Option<String>,
+    /// The index Encoding Scheme Form in `encoding_scheme` used for
+    /// sending this route packet.
     pub encoding_index: Option<i64>,
+    /// The Encoding Scheme of the emitted. See
+    /// https://github.com/cjdelisle/cjdns/blob/cjdns-v18/doc/Whitepaper.md#encoding-schemes
     pub encoding_scheme: Option<EncodingScheme>,
+    /// Used for responding to `fn` and `gp` queries. Should be written
+    /// and read using `RoutePacket::write_nodes` and `RoutePacket::read_nodes`
     pub nodes: Option<Vec<u8>>,
+    /// Used for responding to `fn` and `gp` queries. Should be written
+    /// and read using `RoutePacket::write_nodes` and `RoutePacket::read_nodes`
     pub node_protocol_versions: Option<Vec<u8>>,
+    /// The address the emitted wants to reach. Used for `fn` and `gp` queries.
     pub target_address: Option<Vec<u8>>,
+    /// An opaque identifier decided by query emitters to recognize the answer
+    /// to their query.
     pub transaction_id: Vec<u8>,
+    /// The protocol version of the emitter. Maps to the cjdns version.
     pub protocol_version: i64,
 }
 
+/// An error returned by `RoutePacket::decode`
 pub enum DecodeError {
     BencodeDecodeError(simple_bencode::DecodeError),
     BadType(String),
@@ -40,6 +61,7 @@ pub enum DecodeError {
 }
 
 impl RoutePacket {
+    /// Deserialize a `RoutePacket` from its bencoded representation.
     pub fn decode(v: &[u8]) -> Result<RoutePacket, HelperDecodeError> {
         let bvalue = simple_bencode::decode(v);
         let mut map = match bvalue {
@@ -69,6 +91,7 @@ impl RoutePacket {
             })
     }
 
+    /// Deserialize a `RoutePacket` to its bencode representation.
     pub fn encode(self) -> Vec<u8> {
         let mut map = HashMap::new();
         self.query.map(|q| map.insert(b"q".to_vec(), BValue::String(q.into_bytes().to_vec())));
@@ -82,7 +105,7 @@ impl RoutePacket {
         simple_bencode::encode(&BValue::Dictionary(map))
     }
 
-    /// Check self.nodes and self.node_protocol_versions are consistant,
+    /// Check `self.nodes` and `self.node_protocol_versions` are consistant,
     /// and return (nb, nodes, version_length, versions), which are
     /// useful for decoding.
     fn check_nodes(&self) -> Result<(usize, &Vec<u8>, usize, &Vec<u8>), String> {
@@ -141,6 +164,7 @@ impl RoutePacket {
         Ok(result)
     }
 
+    /// Writes `self.nodes` and `self.node_protocol_versions` together.
     pub fn write_nodes(&mut self, nodes: Vec<Node>) {
         assert!(nodes.iter().all(|n| n.version < 256));
         let mut node_version_bytes = vec![1u8];
@@ -158,6 +182,9 @@ impl RoutePacket {
     }
 }
 
+/// Helper for constructing incrementally a `RoutePacket`.
+///
+/// Methods map to `RoutePacket`'s attributes.
 pub struct RoutePacketBuilder {
     packet: RoutePacket,
 }
@@ -209,6 +236,7 @@ impl RoutePacketBuilder {
         self
     }
 
+    /// Finally produce the RoutePacket
     pub fn finalize(self) -> RoutePacket {
         self.packet
     }
