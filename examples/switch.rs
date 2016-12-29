@@ -37,7 +37,7 @@ fn make_reply(switch_packet: &SwitchPacket, packet_response: Vec<u8>, inner_conn
     }
     else {
         let peer_handle = inner_conn.peer_session_handle().unwrap();
-        SwitchPacket::new_reply(&switch_packet, SwitchPayload::Other(peer_handle, packet_response))
+        SwitchPacket::new_reply(&switch_packet, SwitchPayload::CryptoAuthData(peer_handle, packet_response))
     }
 }
 
@@ -213,7 +213,7 @@ impl Switch {
                 self.on_inner_ca_message(switch_packet, handle, inner_packet);
                 self.random_send_switch_ping(switch_packet);
             },
-            Some(SwitchPayload::Other(handle, ca_message)) => {
+            Some(SwitchPayload::CryptoAuthData(handle, ca_message)) => {
                 let inner_packets = match self.inner_conns.get_mut(&handle) {
                     Some(&mut (_path, ref mut inner_conn)) => {
                         match inner_conn.unwrap_message(ca_message) {

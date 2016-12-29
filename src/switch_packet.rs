@@ -10,9 +10,9 @@ use control::ControlPacket;
 
 #[derive(Debug)]
 pub enum Payload {
-    CryptoAuthHandshake(Vec<u8>),
     Control(ControlPacket),
-    Other(u32, Vec<u8>), // First argument is the session handle
+    CryptoAuthHandshake(Vec<u8>),
+    CryptoAuthData(u32, Vec<u8>), // First argument is the session handle
 }
 
 
@@ -27,17 +27,17 @@ impl SwitchPacket {
         let mut raw = vec![0u8; 12];
         raw[0..8].copy_from_slice(route_label);
         match payload {
+            Payload::Control(msg) => {
+                raw.append(&mut vec![0xff, 0xff, 0xff, 0xff]);
+                raw.append(&mut msg.encode());
+            },
             Payload::CryptoAuthHandshake(mut msg) => {
                 let session_state = BigEndian::read_u32(&msg[0..4]);
                 assert!(session_state < 4);
                 assert!(session_state != 0xffffffff);
                 raw.append(&mut msg);
             },
-            Payload::Control(msg) => {
-                raw.append(&mut vec![0xff, 0xff, 0xff, 0xff]);
-                raw.append(&mut msg.encode());
-            },
-            Payload::Other(session_handle, mut msg) => {
+            Payload::CryptoAuthData(session_handle, mut msg) => {
                 assert!(session_handle >= 4);
                 assert!(session_handle != 0xffffffff);
                 let mut raw_handle = vec![0u8; 4];
@@ -88,9 +88,9 @@ impl SwitchPacket {
     /// Returns a reference to the content of the packet.
     pub fn payload(&self) -> Option<Payload> {
         match BigEndian::read_u32(&self.raw[12..16]) {
-            0 | 1 | 2 | 3 => Some(Payload::CryptoAuthHandshake(self.raw[12..].to_vec())),
             0xffffffff => ControlPacket::decode(&self.raw[16..].to_vec()).map(Payload::Control),
-            handle => Some(Payload::Other(handle, self.raw[16..].to_vec())),
+            0 | 1 | 2 | 3 => Some(Payload::CryptoAuthHandshake(self.raw[12..].to_vec())),
+            handle => Some(Payload::CryptoAuthData(handle, self.raw[16..].to_vec())),
         }
     }
 
