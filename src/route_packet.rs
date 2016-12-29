@@ -198,6 +198,12 @@ impl RoutePacketBuilder {
         self.packet.node_protocol_versions = Some(node_protocol_versions);
         self
     }
+    /// Write `nodes` and `node_protocol_versions` in a single step,
+    /// using `RoutePacket::write_nodes`.
+    pub fn nodes_vec(mut self, nodes: Vec<Node>) -> RoutePacketBuilder {
+        self.packet.write_nodes(nodes);
+        self
+    }
     pub fn target_address(mut self, target_address: Vec<u8>) -> RoutePacketBuilder {
         self.packet.target_address = Some(target_address);
         self

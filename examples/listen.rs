@@ -17,7 +17,7 @@ use fcp_switching::switch_packet::SwitchPacket;
 use fcp_switching::switch_packet::Payload as SwitchPayload;
 use fcp_switching::operation::{RoutingDecision, reverse_label};
 use fcp_switching::control::ControlPacket;
-use fcp_switching::route_packet::{RoutePacket, RoutePacketBuilder};
+use fcp_switching::route_packet::{RoutePacket, RoutePacketBuilder, Node};
 use fcp_switching::data_packet::DataPacket;
 use fcp_switching::data_packet::Payload as DataPayload;
 use fcp_switching::encoding_scheme::{EncodingScheme, EncodingSchemeForm};
@@ -108,30 +108,31 @@ impl Switch {
 
     fn reply_getpeers(&mut self, switch_packet: &SwitchPacket, route_packet: &RoutePacket, handle: u32) {
         let mut nodes = Vec::new();
-        let mut node_protocol_versions = vec![1u8];
-        nodes.reserve(40 * (self.inner_conns.len()+1));
         {
             // Add myself
-            let mut node = [0u8; 40];
-            node[0..32].copy_from_slice(&self.my_pk.0);
-            BigEndian::write_u64(&mut node[32..40], 0b001u64);
-            nodes.extend(node.iter());
-            node_protocol_versions.push(18);
+            let mut my_pk = [0u8; 32];
+            my_pk.copy_from_slice(&self.my_pk.0);
+            nodes.push(Node {
+                public_key: my_pk,
+                path: 0b001,
+                version: 18,
+            });
         }
         for (peer_handle, &(path, ref inner_conn)) in self.inner_conns.iter() {
             if *peer_handle != handle {
-                let mut node = [0u8; 40];
-                node[0..32].copy_from_slice(&inner_conn.their_pk().0);
-                node[32..40].copy_from_slice(&path);
-                nodes.extend(node.iter());
-                node_protocol_versions.push(18); // TODO
+                let mut pk = [0u8; 32];
+                pk.copy_from_slice(&inner_conn.their_pk().0);
+                nodes.push(Node {
+                    public_key: pk,
+                    path: BigEndian::read_u64(&path.clone()),
+                    version: 18, // TODO
+                });
                 println!("Announcing one peer, with path: {}", path.to_vec().to_hex());
             }
         }
         let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
         let route_packet = RoutePacketBuilder::new(18, route_packet.transaction_id.clone())
-                .nodes(nodes)
-                .node_protocol_versions(node_protocol_versions)
+                .nodes_vec(nodes)
                 .encoding_index(0)
                 .encoding_scheme(encoding_scheme)
                 .finalize();
@@ -279,9 +280,9 @@ impl Switch {
                 }
             }
 
-            let mut buf = vec![0u8; 1024];
+            let mut buf = vec![0u8; 4096];
             let (nb_bytes, addr) = self.sock.recv_from(&mut buf).unwrap();
-            assert!(nb_bytes < 1024);
+            assert!(nb_bytes < 4096);
             buf.truncate(nb_bytes);
             self.on_outer_ca_message(addr, buf);
         }
