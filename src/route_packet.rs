@@ -15,7 +15,7 @@ const PATH_LENGTH: usize = 8;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Node {
-    pub public_key: Vec<u8>,
+    pub public_key: [u8; PUBLIC_KEY_LENGTH],
     pub path: u64,
     pub version: u64,
 }
@@ -113,9 +113,6 @@ impl RoutePacket {
     }
 
     /// Parses `self.nodes` and `self.node_protocol_versions` together.
-    ///
-    /// ```
-    /// ```
     pub fn read_nodes(&self) -> Result<Vec<Node>, String> {
         let (nb, nodes, version_length, versions) = try!(self.check_nodes());
 
@@ -124,7 +121,8 @@ impl RoutePacket {
         for i in 0..nb {
             let node_start = i*(PUBLIC_KEY_LENGTH+PATH_LENGTH);
 
-            let public_key = nodes[node_start..node_start+PUBLIC_KEY_LENGTH].to_vec();
+            let mut public_key = [0u8; PUBLIC_KEY_LENGTH];
+            public_key.copy_from_slice(&nodes[node_start..node_start+PUBLIC_KEY_LENGTH]);
 
             let path = BigEndian::read_u64(&nodes[node_start+PUBLIC_KEY_LENGTH..node_start+PUBLIC_KEY_LENGTH+PATH_LENGTH]);
 
@@ -141,6 +139,22 @@ impl RoutePacket {
             result.push(node);
         }
         Ok(result)
+    }
+
+    pub fn write_nodes(&mut self, nodes: Vec<Node>) {
+        assert!(nodes.iter().all(|n| n.version < 256));
+        let mut node_version_bytes = vec![1u8];
+        node_version_bytes.extend(nodes.iter().map(|n| n.version as u8));
+
+        let mut node_bytes = vec![0u8; nodes.len()*(PUBLIC_KEY_LENGTH+PATH_LENGTH)];
+        for (i, node) in nodes.iter().enumerate() {
+            let bytes_start = i*(PUBLIC_KEY_LENGTH+PATH_LENGTH);
+            node_bytes[bytes_start..bytes_start+PUBLIC_KEY_LENGTH].copy_from_slice(&node.public_key);
+            BigEndian::write_u64(&mut node_bytes[bytes_start+PUBLIC_KEY_LENGTH..bytes_start+PUBLIC_KEY_LENGTH+PATH_LENGTH], node.path);
+        }
+
+        self.node_protocol_versions = Some(node_version_bytes);
+        self.nodes = Some(node_bytes);
     }
 }
 
@@ -236,24 +250,33 @@ mod tests {
     }
 
     #[test]
-    fn test_read_nodes() {
-        let packet = RoutePacket::decode(&vec![100,50,58,101,105,105,48,101,50,58,101,115,53,58,97,20,69,129,0,49,58,110,49,50,48,58,130,223,186,81,37,25,242,89,134,192,176,47,101,127,172,39,50,222,248,255,202,29,7,104,145,198,13,140,88,35,113,111,0,0,0,0,0,0,0,21,14,212,108,34,167,28,34,202,98,134,15,159,58,151,12,228,58,163,181,163,40,102,66,125,212,44,203,100,174,56,120,61,0,0,0,0,0,0,0,19,2,134,254,75,44,62,116,254,79,92,235,47,82,76,129,250,190,138,148,250,65,218,166,83,148,144,15,83,7,157,10,20,0,0,0,0,0,0,0,1,50,58,110,112,52,58,1,18,17,18,49,58,112,105,49,56,101,52,58,116,120,105,100,52,58,98,108,97,104,101]).unwrap();
+    fn test_read_write_nodes() {
+        let mut packet = RoutePacket::decode(&vec![100,50,58,101,105,105,48,101,50,58,101,115,53,58,97,20,69,129,0,49,58,110,49,50,48,58,130,223,186,81,37,25,242,89,134,192,176,47,101,127,172,39,50,222,248,255,202,29,7,104,145,198,13,140,88,35,113,111,0,0,0,0,0,0,0,21,14,212,108,34,167,28,34,202,98,134,15,159,58,151,12,228,58,163,181,163,40,102,66,125,212,44,203,100,174,56,120,61,0,0,0,0,0,0,0,19,2,134,254,75,44,62,116,254,79,92,235,47,82,76,129,250,190,138,148,250,65,218,166,83,148,144,15,83,7,157,10,20,0,0,0,0,0,0,0,1,50,58,110,112,52,58,1,18,17,18,49,58,112,105,49,56,101,52,58,116,120,105,100,52,58,98,108,97,104,101]).unwrap();
         let nodes = packet.read_nodes().unwrap();
         let expected1 = Node {
-                public_key: vec![130,223,186,81,37,25,242,89,134,192,176,47,101,127,172,39,50,222,248,255,202,29,7,104,145,198,13,140,88,35,113,111],
+                public_key: [130,223,186,81,37,25,242,89,134,192,176,47,101,127,172,39,50,222,248,255,202,29,7,104,145,198,13,140,88,35,113,111],
                 path: 0x15,
                 version: 18,
             };
         let expected2 = Node {
-                public_key: vec![14,212,108,34,167,28,34,202,98,134,15,159,58,151,12,228,58,163,181,163,40,102,66,125,212,44,203,100,174,56,120,61],
+                public_key: [14,212,108,34,167,28,34,202,98,134,15,159,58,151,12,228,58,163,181,163,40,102,66,125,212,44,203,100,174,56,120,61],
                 path: 0x13,
                 version: 17,
             };
         let expected3 = Node {
-                public_key: vec![2,134,254,75,44,62,116,254,79,92,235,47,82,76,129,250,190,138,148,250,65,218,166,83,148,144,15,83,7,157,10,20],
+                public_key: [2,134,254,75,44,62,116,254,79,92,235,47,82,76,129,250,190,138,148,250,65,218,166,83,148,144,15,83,7,157,10,20],
                 path: 0x01,
                 version: 18,
             };
+        assert_eq!(nodes.len(), 3);
+        assert_eq!(nodes[0], expected1);
+        assert_eq!(nodes[1], expected2);
+        assert_eq!(nodes[2], expected3);
+
+        packet.write_nodes(vec![]);
+        assert_eq!(packet.read_nodes().unwrap(), vec![]);
+
+        packet.write_nodes(vec![expected1.clone(), expected2.clone(), expected3.clone()]);
         assert_eq!(nodes.len(), 3);
         assert_eq!(nodes[0], expected1);
         assert_eq!(nodes[1], expected2);
