@@ -43,9 +43,9 @@ fn make_reply(replied_to_packet: &SwitchPacket, reply_content: Vec<u8>, inner_co
     let first_four_bytes = BigEndian::read_u32(&reply_content[0..4]);
     if first_four_bytes < 4 {
         // If it is a CryptoAuth handshake packet, send it as is.
-        SwitchPacket::new_reply(&replied_to_packet, SwitchPayload::CryptoAuthHandshake(packet_response))
+        SwitchPacket::new_reply(&replied_to_packet, SwitchPayload::CryptoAuthHandshake(reply_content))
     }
-    else if first_four_bytes == 0xffffffff) {
+    else if first_four_bytes == 0xffffffff {
         // Control packet
         unimplemented!()
     }
@@ -193,7 +193,7 @@ impl Switch {
     }
 
     /// Sometimes (random) sends a `gp` query.
-    fn random_send_getpeers(&mut self, reply_to: &SwitchPacket) {
+    fn random_send_getpeers(&mut self, reply_to: &SwitchPacket, handle: u32) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
             let route_packet = RoutePacketBuilder::new(18, b"blah".to_vec())
@@ -215,6 +215,7 @@ impl Switch {
                 self.send(&mut response, 0b001);
             }
         }
+    }
 
     /// Called when a CryptoAuth message is received through an end-to-end
     /// session.
@@ -231,7 +232,7 @@ impl Switch {
             }
         }
 
-        self.random_send_getpeers(switch_packet)
+        self.random_send_getpeers(switch_packet, handle)
     }
 
     /// Called when a switch packet is sent to the self interface
