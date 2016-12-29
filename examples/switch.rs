@@ -254,7 +254,9 @@ impl Switch {
             Some(SwitchPayload::CryptoAuthHandshake(handshake)) => {
                 // If it is a CryptoAuth handshake packet (ie. if someone is
                 // connecting to us), create a new session for this node.
-                // TODO: add support for receiving KEY packets in inner sessions
+                // All CA handshake we receive will be sessions started by
+                // other peers, because this switch never starts sessions
+                // (routers do, not switches).
                 let mut handle;
                 loop {
                     handle = rand::thread_rng().next_u32();
