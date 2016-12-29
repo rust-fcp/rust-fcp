@@ -1,6 +1,6 @@
-//! Contains the `SwitchHeader` structure, storing the packet header
+//! Contains the `SwitchPacket` structure, storing the packet header
 //! used by the Switch, as defined by
-//! https://github.com/cjdelisle/cjdns/blob/cjdns-v17.4/doc/Whitepaper.md#in-memory-representation
+//! https://github.com/cjdelisle/cjdns/blob/cjdns-v18/doc/Whitepaper.md#in-memory-representation
 
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
@@ -23,6 +23,7 @@ pub struct SwitchPacket {
 }
 
 impl SwitchPacket {
+    /// Returns a new packet, constructed from its route and its payload.
     pub fn new(route_label: &[u8; 8], payload: Payload) -> SwitchPacket {
         let mut raw = vec![0u8; 12];
         raw[0..8].copy_from_slice(route_label);
@@ -94,12 +95,19 @@ impl SwitchPacket {
         }
     }
 
+    /// Make this packet advance one logical hop.
+    ///
+    /// Using the Director Length of this switch, determines what interface
+    /// the packet will go next, update the label of the packet to take that
+    /// switching into account (pops the interface from the path, and puts it
+    /// on the reverse path), then returns the interface.
     pub fn switch(&mut self, director_length: u8, reversed_origin_iface: &Director) -> RoutingDecision {
         let (new_label, decision) = switch(&self.label(), director_length, reversed_origin_iface);
         self.raw[0..8].copy_from_slice(&new_label);
         decision
     }
 
+    /// Inverses the path and the return path.
     pub fn reverse_label(&mut self) {
         // TODO: do this in-place/no-copy.
         let mut label = [0u8; 8];
