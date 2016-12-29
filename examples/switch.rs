@@ -25,32 +25,60 @@ use fcp_switching::encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 use hex::ToHex;
 use rand::Rng;
 
+/// Used to represent a connection to a *direct peer* of this switch.
+///
 struct Interface {
+    /// Used for routing -- it is the Director.
     id: u8,
+    /// A point-to-point (aka outer) CryptoAuth session.
     ca_session: Wrapper<String>,
+    /// The address where to send the UDP packets to.
     addr: SocketAddr,
 }
 
-fn make_reply(switch_packet: &SwitchPacket, packet_response: Vec<u8>, inner_conn: &Wrapper<()>) -> SwitchPacket {
-    if BigEndian::read_u32(&packet_response[0..4]) < 4 {
-        SwitchPacket::new_reply(&switch_packet, SwitchPayload::CryptoAuthHandshake(packet_response))
+/// Creates a reply switch packet to an other switch packet.
+/// The content of the reply is given as a byte array (returned CryptoAuth's
+/// `wrap_messages`).
+fn make_reply(replied_to_packet: &SwitchPacket, reply_content: Vec<u8>, inner_conn: &Wrapper<()>) -> SwitchPacket {
+    let first_four_bytes = BigEndian::read_u32(&reply_content[0..4]);
+    if first_four_bytes < 4 {
+        // If it is a CryptoAuth handshake packet, send it as is.
+        SwitchPacket::new_reply(&replied_to_packet, SwitchPayload::CryptoAuthHandshake(packet_response))
+    }
+    else if first_four_bytes == 0xffffffff) {
+        // Control packet
+        unimplemented!()
     }
     else {
+        // Otherwise, it is a CryptoAuth data packet. We have to prepend
+        // the session handle to the reply.
+        // This handle is used by the peer to know this packet is coming
+        // from us.
         let peer_handle = inner_conn.peer_session_handle().unwrap();
-        SwitchPacket::new_reply(&switch_packet, SwitchPayload::CryptoAuthData(peer_handle, packet_response))
+        SwitchPacket::new_reply(&replied_to_packet, SwitchPayload::CryptoAuthData(peer_handle, reply_content))
     }
 }
 
+/// Main data structure of the switch.
 struct Switch {
+    /// The socket used for receiving and sending UDP packets to peers.
     sock: UdpSocket,
+    /// Peers
     interfaces: Vec<Interface>,
+    /// My public key, both for outer and inner CryptoAuth sessions.
     my_pk: PublicKey,
+    /// My public key, both for outer and inner CryptoAuth sessions.
     my_sk: SecretKey,
+    /// CryptoAuth sessions used to talk to switches/routers. Their packets
+    /// themselves are wrapped in SwitchPackets, which are wrapped in the
+    /// outer CryptoAuth sessions.
     inner_conns: HashMap<u32, ([u8; 8], Wrapper<()>)>,
+    /// Credentials of peers which are allowed to connect to us.
     allowed_peers: HashMap<Credentials, String>,
 }
 
 impl Switch {
+    /// Instanciates a switch.
     fn new(sock: UdpSocket, interfaces: Vec<Interface>, my_pk: PublicKey, my_sk: SecretKey, allowed_peers: HashMap<Credentials, String>) -> Switch {
         Switch {
             sock: sock,
@@ -62,6 +90,8 @@ impl Switch {
             }
     }
 
+    /// Takes a 3-bit interface id, and reverse its bits.
+    /// Used to compute reverse paths.
     fn reverse_iface_id(&self, iface_id: u8) -> u8 {
         match iface_id {
             0b000 => 0b000,
@@ -76,6 +106,7 @@ impl Switch {
         }
     }
 
+    /// Sometimes (random) sends a switch as a reply to the packet.
     fn random_send_switch_ping(&mut self, switch_packet: &SwitchPacket) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let ping = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
@@ -84,16 +115,23 @@ impl Switch {
         }
     }
 
+    /// Send a packet to the appropriate interface.
     fn send(&mut self, packet: &mut SwitchPacket, from_interface: u8) {
-        match packet.switch(3, &(self.reverse_iface_id(from_interface) as u64)) {
+        // Logically advance the packet through an interface.
+        let routing_decision = packet.switch(3, &(self.reverse_iface_id(from_interface) as u64));
+        match routing_decision {
             RoutingDecision::SelfInterface(_) => {
+                // Packet is sent to myself
                 self.on_self_interface_switch_packet(packet);
             }
             RoutingDecision::Forward(iface_id) => {
+                // Packet is sent to a peer.
                 let mut sent = false;
                 for interface in self.interfaces.iter_mut() {
                     if interface.id as u64 == iface_id {
                         sent = true;
+                        // Wrap the packet with the outer CryptoAuth session
+                        // of this peer, and send it.
                         for packet in interface.ca_session.wrap_message(&packet.raw) {
                             self.sock.send_to(&packet, interface.addr).unwrap();
                         }
@@ -106,6 +144,7 @@ impl Switch {
         }
     }
 
+    /// Reply to `gp` queries by sending a list of my peers.
     fn reply_getpeers(&mut self, switch_packet: &SwitchPacket, route_packet: &RoutePacket, handle: u32) {
         let mut nodes = Vec::new();
         {
@@ -120,6 +159,8 @@ impl Switch {
         }
         for (peer_handle, &(path, ref inner_conn)) in self.inner_conns.iter() {
             if *peer_handle != handle {
+                // If the peer is not the one asking for the list of peers,
+                // add it to the list.
                 let mut pk = [0u8; 32];
                 pk.copy_from_slice(&inner_conn.their_pk().0);
                 nodes.push(Node {
@@ -130,10 +171,12 @@ impl Switch {
                 println!("Announcing one peer, with path: {}", path.to_vec().to_hex());
             }
         }
+        // TODO: only send the peers closest to the specified target address.
+
         let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
         let route_packet = RoutePacketBuilder::new(18, route_packet.transaction_id.clone())
                 .nodes_vec(nodes)
-                .encoding_index(0)
+                .encoding_index(0) // This switch uses only one encoding scheme
                 .encoding_scheme(encoding_scheme)
                 .finalize();
         let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
@@ -149,16 +192,8 @@ impl Switch {
         }
     }
 
-    fn on_inner_ca_message(&mut self, switch_packet: &SwitchPacket, handle: u32, ca_message: Vec<u8>) {
-        let data_packet = DataPacket { raw: ca_message };
-        println!("Received data packet: {}", data_packet);
-        match data_packet.payload().unwrap() {
-            DataPayload::RoutePacket(route_packet) => {
-                if route_packet.query == Some("gp".to_owned()) {
-                    self.reply_getpeers(switch_packet, &route_packet, handle);
-                }
-            }
-        }
+    /// Sometimes (random) sends a `gp` query.
+    fn random_send_getpeers(&mut self, reply_to: &SwitchPacket) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
             let route_packet = RoutePacketBuilder::new(18, b"blah".to_vec())
@@ -173,18 +208,37 @@ impl Switch {
                 let &mut (_path, ref mut inner_conn) = self.inner_conns.get_mut(&handle).unwrap();
                 println!("Sending data packet: {}", getpeers_message);
                 for packet_response in inner_conn.wrap_message_immediately(&getpeers_message.raw) {
-                    responses.push(make_reply(&switch_packet, packet_response, inner_conn));
+                    responses.push(make_reply(reply_to, packet_response, inner_conn));
                 }
             }
             for mut response in responses {
                 self.send(&mut response, 0b001);
             }
         }
+
+    /// Called when a CryptoAuth message is received through an end-to-end
+    /// session.
+    fn on_inner_ca_message(&mut self, switch_packet: &SwitchPacket, handle: u32, ca_message: Vec<u8>) {
+        let data_packet = DataPacket { raw: ca_message };
+        println!("Received data packet: {}", data_packet);
+
+        // If it is a query, reply to it.
+        match data_packet.payload().unwrap() {
+            DataPayload::RoutePacket(route_packet) => {
+                if route_packet.query == Some("gp".to_owned()) {
+                    self.reply_getpeers(switch_packet, &route_packet, handle);
+                }
+            }
+        }
+
+        self.random_send_getpeers(switch_packet)
     }
 
+    /// Called when a switch packet is sent to the self interface
     fn on_self_interface_switch_packet(&mut self, switch_packet: &SwitchPacket) {
         match switch_packet.payload() {
             Some(SwitchPayload::Control(ControlPacket::Ping { opaque_data, .. })) => {
+                // If it is a ping packet, just reply to it.
                 let control_response = ControlPacket::Pong { version: 18, opaque_data: opaque_data };
                 let mut packet_response = SwitchPacket::new_reply(switch_packet, SwitchPayload::Control(control_response));
                 self.send(&mut packet_response, 0b001);
@@ -192,10 +246,14 @@ impl Switch {
                 self.random_send_switch_ping(switch_packet);
             },
             Some(SwitchPayload::Control(ControlPacket::Pong { opaque_data, .. })) => {
+                // If it is a pong packet, print it.
                 assert_eq!(opaque_data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
                 println!("Received pong (label: {}).", switch_packet.label().to_vec().to_hex());
             },
             Some(SwitchPayload::CryptoAuthHandshake(handshake)) => {
+                // If it is a CryptoAuth handshake packet (ie. if someone is
+                // connecting to us), create a new session for this node.
+                // TODO: add support for receiving KEY packets in inner sessions
                 let mut handle;
                 loop {
                     handle = rand::thread_rng().next_u32();
@@ -214,6 +272,9 @@ impl Switch {
                 self.random_send_switch_ping(switch_packet);
             },
             Some(SwitchPayload::CryptoAuthData(handle, ca_message)) => {
+                // If it is a CryptoAuth data packet, first read the session
+                // handle to know which CryptoAuth session to use to
+                // decrypt it.
                 let inner_packets = match self.inner_conns.get_mut(&handle) {
                     Some(&mut (_path, ref mut inner_conn)) => {
                         match inner_conn.unwrap_message(ca_message) {
@@ -231,6 +292,8 @@ impl Switch {
         }
     }
 
+    // Find what interface a UDP packet is coming from, using its emitted
+    // IP address.
     fn get_incoming_iface_and_open(&mut self, from_addr: SocketAddr, buf: Vec<u8>) -> (&Interface, Vec<Vec<u8>>) {
         let mut iface_exists = false;
         for candidate_interface in self.interfaces.iter_mut() {
@@ -261,6 +324,7 @@ impl Switch {
         }
     }
 
+    /// Called when a UDP packet is received.
     fn on_outer_ca_message(&mut self, from_addr: SocketAddr, buf: Vec<u8>) {
         let (iface_id, messages) = {
             let (interface, messages) = self.get_incoming_iface_and_open(from_addr, buf);
@@ -287,7 +351,6 @@ impl Switch {
             self.on_outer_ca_message(addr, buf);
         }
     }
-
 }
 
 pub fn main() {
