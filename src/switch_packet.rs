@@ -101,6 +101,8 @@ impl SwitchPacket {
     /// the packet will go next, update the label of the packet to take that
     /// switching into account (pops the interface from the path, and puts it
     /// on the reverse path), then returns the interface.
+    ///
+    /// See the doc of `fcp_switching::operation::switch` for more details.
     pub fn switch(&mut self, director_length: u8, reversed_origin_iface: &Director) -> RoutingDecision {
         let (new_label, decision) = switch(&self.label(), director_length, reversed_origin_iface);
         self.raw[0..8].copy_from_slice(&new_label);
