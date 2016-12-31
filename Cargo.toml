@@ -1,7 +1,11 @@
 [package]
 name = "fcp_switching"
 version = "0.1.0"
-authors = ["Valentin Lorentz <progval+git@progval.net>"]
+authors = ["Valentin Lorentz <progval+fcp@progval.net>"]
+description = "Implementation of the Futuristic Connectivity Protocol's Switching algorithms and decoders."
+license = "MIT"
+repository = "https://github.com/rust-fcp/rust-fcp-switching"
+readme = "README.md"
 
 [dependencies]
 byteorder = "~0.5.3"
