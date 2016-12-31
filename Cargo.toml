@@ -8,10 +8,10 @@ repository = "https://github.com/rust-fcp/rust-fcp-switching"
 readme = "README.md"
 
 [dependencies]
-byteorder = "~0.5.3"
-hex = "~0.2.0"
-simple_bencode = { git = "https://github.com/rust-fcp/rust-simple-bencode.git" }
+byteorder = "^0.5.3"
+hex = "^0.2.0"
+simple_bencode = "^0.1.4"
 
 [dev-dependencies]
-fcp_cryptoauth = { git = "https://github.com/rust-fcp/rust-fcp-cryptoauth.git" }
-rand = "*"
+fcp_cryptoauth = "^0.1.0"
+rand = "^0.3.15"
