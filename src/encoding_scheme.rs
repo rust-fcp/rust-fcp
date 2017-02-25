@@ -98,7 +98,6 @@ impl<'a> FromIterator<&'a EncodingSchemeForm> for EncodingScheme {
         let mut bytes = Vec::<u8>::new();
         let mut window = 0u64;
         let mut bits_in_window = 0u8;
-        println!("---");
         for form in forms {
             assert!(form.prefix_length <= 0b11111);
             assert!(form.bit_count <= 0b11111);
