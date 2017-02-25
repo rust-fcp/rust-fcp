@@ -55,7 +55,7 @@ impl DataPacket {
                     Err(e) => Err(format!("Could not decode route packet: {:?}", e)), // TODO: proper error handling
                 }
             },
-            _ => unimplemented!()
+            _ => panic!(format!("Unknown Data Packet Content-Type: {}", content_type)),
         }
     }
 }
