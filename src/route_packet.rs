@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 use std::string::FromUtf8Error;
+use std::hash::{Hash, Hasher};
+use std::cmp::Ordering;
 
 use simple_bencode;
 use simple_bencode::Value as BValue;
@@ -16,11 +18,29 @@ const PATH_LENGTH: usize = 8;
 
 /// Represents a cjdns node, with its public key, path through the network,
 /// and protocol version.
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Clone, Eq, PartialOrd)]
 pub struct Node {
     pub public_key: [u8; PUBLIC_KEY_LENGTH],
     pub path: Label,
     pub version: u64,
+}
+
+impl PartialEq for Node {
+    fn eq(&self, other: &Node) -> bool {
+        self.public_key == other.public_key
+    }
+}
+
+impl Ord for Node {
+    fn cmp(&self, other: &Node) -> Ordering {
+        self.public_key.cmp(&other.public_key)
+    }
+}
+
+impl Hash for Node {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.public_key.hash(state);
+    }
 }
 
 /// A packet exchanged by switches and routers to advertise routes.
