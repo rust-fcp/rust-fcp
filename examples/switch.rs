@@ -17,7 +17,7 @@ use fcp_switching::switch_packet::SwitchPacket;
 use fcp_switching::switch_packet::Payload as SwitchPayload;
 use fcp_switching::operation::{RoutingDecision, reverse_label};
 use fcp_switching::control::ControlPacket;
-use fcp_switching::route_packet::{RoutePacket, RoutePacketBuilder, Node};
+use fcp_switching::route_packet::{RoutePacket, RoutePacketBuilder, NodeData};
 use fcp_switching::data_packet::DataPacket;
 use fcp_switching::data_packet::Payload as DataPayload;
 use fcp_switching::encoding_scheme::{EncodingScheme, EncodingSchemeForm};
@@ -151,7 +151,7 @@ impl Switch {
             // Add myself
             let mut my_pk = [0u8; 32];
             my_pk.copy_from_slice(&self.my_pk.0);
-            nodes.push(Node {
+            nodes.push(NodeData {
                 public_key: my_pk,
                 path: [0, 0, 0, 0, 0, 0, 0, 0b001],
                 version: 18,
@@ -163,7 +163,7 @@ impl Switch {
                 // add it to the list.
                 let mut pk = [0u8; 32];
                 pk.copy_from_slice(&inner_conn.their_pk().0);
-                nodes.push(Node {
+                nodes.push(NodeData {
                     public_key: pk,
                     path: path,
                     version: 18, // TODO
