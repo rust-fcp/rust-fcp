@@ -18,7 +18,7 @@ const PATH_LENGTH: usize = 8;
 
 /// Represents a cjdns node, with its public key, path through the network,
 /// and protocol version.
-#[derive(Debug, Clone, Eq, PartialOrd)]
+#[derive(Debug, Clone)]
 pub struct NodeData {
     pub public_key: [u8; PUBLIC_KEY_LENGTH],
     pub path: Label,
@@ -30,10 +30,17 @@ impl PartialEq for NodeData {
         self.public_key == other.public_key
     }
 }
+impl Eq for NodeData {
+}
 
 impl Ord for NodeData {
     fn cmp(&self, other: &NodeData) -> Ordering {
         self.public_key.cmp(&other.public_key)
+    }
+}
+impl PartialOrd for NodeData {
+    fn partial_cmp(&self, other: &NodeData) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
