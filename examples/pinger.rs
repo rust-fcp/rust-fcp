@@ -27,7 +27,6 @@ use fcp::utils::make_reply;
 use fcp::node::{Address, Node};
 use fcp::router::Router;
 
-use hex::ToHex;
 use rand::Rng;
 
 /// Main data structure of the switch.
@@ -52,7 +51,7 @@ impl Pinger {
             ping_targets: ping_targets,
             ping_nodes: Vec::new(),
             address_to_handle: HashMap::new(),
-            router: Router::new(Address::from(&publickey_to_ipv6addr(&my_pk)))
+            router: Router::new(my_pk),
             }
     }
 
@@ -113,53 +112,6 @@ impl Pinger {
         }
     }
 
-    /// Reply to `gp` queries by sending a list of my peers.
-    fn reply_getpeers(&mut self, switch_packet: &SwitchPacket, route_packet: &RoutePacket, handle: u32) {
-        let mut nodes = Vec::new();
-        {
-            // Add myself
-            let mut my_pk = [0u8; 32];
-            my_pk.copy_from_slice(&self.inner.my_pk.0);
-            nodes.push(NodeData {
-                public_key: my_pk,
-                path: [0, 0, 0, 0, 0, 0, 0, 0b001],
-                version: 18,
-            });
-        }
-        for (peer_handle, &(path, ref inner_conn)) in self.inner.e2e_conns.iter() {
-            if *peer_handle != handle {
-                // If the peer is not the one asking for the list of peers,
-                // add it to the list.
-                let mut pk = [0u8; 32];
-                pk.copy_from_slice(&inner_conn.their_pk().0);
-                nodes.push(NodeData {
-                    public_key: pk,
-                    path: path,
-                    version: 18, // TODO
-                });
-                println!("Announcing one peer, with path: {}", path.to_vec().to_hex());
-            }
-        }
-        // TODO: only send the peers closest to the specified target address.
-
-        let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
-        let route_packet = RoutePacketBuilder::new(18, route_packet.transaction_id.clone())
-                .nodes_vec(nodes)
-                .encoding_index(0) // This switch uses only one encoding scheme
-                .encoding_scheme(encoding_scheme)
-                .finalize();
-        let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
-        let responses: Vec<_>;
-        {
-            let &mut (_path, ref mut inner_conn) = self.inner.e2e_conns.get_mut(&handle).unwrap();
-            let tmp = inner_conn.wrap_message_immediately(&getpeers_response.raw);
-            responses = tmp.into_iter().map(|r| make_reply(&switch_packet, r, inner_conn)).collect();
-        }
-        for response in responses {
-            self.dispatch(response, 0b001);
-        }
-    }
-
 
     fn ping_node(&mut self, node: &Node) {
         let node_pk = PublicKey::from_slice(node.public_key()).unwrap();
@@ -216,17 +168,24 @@ impl Pinger {
 
         println!("Received inner ca message from handle {} with path {:?}: {}", handle, switch_packet.label(), data_packet);
 
+        let their_pk = self.inner.e2e_conns.get(&handle).unwrap().1.their_pk().clone();
+
         // If it is a query, reply to it.
-        match data_packet.payload().unwrap() {
+        let route_packets = match data_packet.payload().unwrap() {
             DataPayload::RoutePacket(route_packet) => {
-                if route_packet.query == Some("gp".to_owned()) {
-                    self.reply_getpeers(switch_packet, &route_packet, handle);
-                }
-                let (path, ref conn) = *self.inner.e2e_conns.get(&handle).unwrap();
-                let node = Node::new(conn.their_pk().0, path, route_packet.protocol_version as u64);
-                println!("Adding {} to store.", conn.their_pk().to_base32());
-                let addr = publickey_to_ipv6addr(conn.their_pk()).into();
-                self.router.update(addr, node);
+                self.router.on_route_packet(&route_packet, switch_packet.label(), handle, their_pk)
+            }
+        };
+        for route_packet in route_packets.into_iter() {
+            let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
+            let responses: Vec<_>;
+            {
+                let &mut (_path, ref mut inner_conn) = self.inner.e2e_conns.get_mut(&handle).unwrap();
+                let tmp = inner_conn.wrap_message_immediately(&getpeers_response.raw);
+                responses = tmp.into_iter().map(|r| make_reply(&switch_packet, r, inner_conn)).collect();
+            }
+            for response in responses {
+                self.dispatch(response, 0b001);
             }
         }
     }

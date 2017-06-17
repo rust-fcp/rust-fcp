@@ -1,25 +1,32 @@
-use route_packet::{RoutePacket, RoutePacketBuilder};
-use operation::Label;
+use fcp_cryptoauth::{PublicKey, publickey_to_ipv6addr};
+
+use route_packet::{RoutePacket, RoutePacketBuilder, NodeData};
 use std::iter::FromIterator;
 use encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 
+use operation::Label;
 use node_store::{NodeStore, GetNodeResult};
 use node::{Address, Node};
 
 const PROTOCOL_VERSION: i64 = 18;
 
+type SessionHandle = u32;
 
 /// Wrapper of `NodeStore` that reads/writes network packets.
 /// TODO: Check paths are valid before inserting them (eg. send a
 /// ping and wait for the reply).
 pub struct Router {
+    my_pk: PublicKey,
     node_store: NodeStore,
+    peers: Vec<(SessionHandle, PublicKey, Label)>,
 }
 
 impl Router {
-    pub fn new(my_address: Address) -> Router {
+    pub fn new(my_pk: PublicKey) -> Router {
         Router {
-            node_store: NodeStore::new(my_address),
+            node_store: NodeStore::new(publickey_to_ipv6addr(&my_pk).into()),
+            peers: Vec::new(),
+            my_pk: my_pk,
         }
     }
 
@@ -55,9 +62,49 @@ impl Router {
         }
     }
 
+    /// Reply to `gp` queries by sending a list of my peers.
+    fn on_getpeers(&mut self, packet: &RoutePacket, handle: u32) -> Vec<RoutePacket> {
+        let mut nodes = Vec::new();
+        {
+            // Add myself
+            let mut my_pk = [0u8; 32];
+            my_pk.copy_from_slice(&self.my_pk.0);
+            nodes.push(NodeData {
+                public_key: my_pk,
+                path: [0, 0, 0, 0, 0, 0, 0, 0b001],
+                version: 18,
+            });
+        }
+        for &(peer_handle, pk, path) in self.peers.iter() {
+            if peer_handle != handle {
+                nodes.push(NodeData {
+                    public_key: pk.0,
+                    path: path,
+                    version: 18, // TODO
+                });
+            }
+        }
+        // TODO: only send the peers closest to the specified target address.
+
+        let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
+        let response = RoutePacketBuilder::new(18, packet.transaction_id.clone())
+                .nodes_vec(nodes)
+                .encoding_index(0) // This switch uses only one encoding scheme
+                .encoding_scheme(encoding_scheme)
+                .finalize();
+        vec![response]
+    }
+
     /// Called when a RoutePacket is received from the network.
     /// Optionally returns RoutePackets to send back.
-    pub fn on_route_packet(&mut self, label: &Label, packet: &RoutePacket) -> Result<Vec<(Label, RoutePacket)>, ()> {
-        Ok(Vec::new())
+    pub fn on_route_packet(&mut self, packet: &RoutePacket, path: Label, handle: u32, pk: PublicKey) -> Vec<RoutePacket> {
+        let responses = match packet.query.as_ref().map(String::as_ref) {
+            Some("gp") => self.on_getpeers(packet, handle),
+            _ => Vec::new(),
+        };
+        let node = Node::new(pk.0, path, packet.protocol_version as u64);
+        let addr = publickey_to_ipv6addr(&pk).into();
+        self.update(addr, node);
+        responses
     }
 }
