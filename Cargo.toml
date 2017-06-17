@@ -8,13 +8,13 @@ repository = "https://github.com/rust-fcp/rust-fcp"
 readme = "README.md"
 
 [dependencies]
+fcp_cryptoauth = { git = "https://github.com/rust-fcp/rust-fcp-cryptoauth.git" }
 byteorder = "^0.5.3"
 hex = "^0.2.0"
 simple_bencode = "^0.1.4"
 simple_kbuckets = "^0.2.0"
 
 [dev-dependencies]
-fcp_cryptoauth = { git = "https://github.com/rust-fcp/rust-fcp-cryptoauth.git" }
 byteorder = "^0.5.3"
 rand = "^0.3.15"
 hex = "*"
