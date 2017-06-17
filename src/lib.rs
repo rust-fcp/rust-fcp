@@ -15,6 +15,7 @@ pub mod node_store;
 pub mod router;
 pub mod passive_switch;
 pub mod udp_handler;
+pub mod utils;
 
 #[cfg(test)]
 mod tests {

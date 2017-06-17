@@ -23,32 +23,10 @@ use fcp::data_packet::Payload as DataPayload;
 use fcp::encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 use fcp::passive_switch::{PassiveSwitch, Interface};
 use fcp::udp_handler::UdpHandler;
+use fcp::utils::make_reply;
 
 use hex::ToHex;
 use rand::Rng;
-
-/// Creates a reply switch packet to an other switch packet.
-/// The content of the reply is given as a byte array (returned CryptoAuth's
-/// `wrap_messages`).
-fn make_reply(replied_to_packet: &SwitchPacket, reply_content: Vec<u8>, inner_conn: &CAWrapper<()>) -> SwitchPacket {
-    let first_four_bytes = BigEndian::read_u32(&reply_content[0..4]);
-    if first_four_bytes < 4 {
-        // If it is a CryptoAuth handshake packet, send it as is.
-        SwitchPacket::new_reply(&replied_to_packet, SwitchPayload::CryptoAuthHandshake(reply_content))
-    }
-    else if first_four_bytes == 0xffffffff {
-        // Control packet
-        unimplemented!()
-    }
-    else {
-        // Otherwise, it is a CryptoAuth data packet. We have to prepend
-        // the session handle to the reply.
-        // This handle is used by the peer to know this packet is coming
-        // from us.
-        let peer_handle = inner_conn.peer_session_handle().unwrap();
-        SwitchPacket::new_reply(&replied_to_packet, SwitchPayload::CryptoAuthData(peer_handle, reply_content))
-    }
-}
 
 /// Main data structure of the switch.
 struct UdpSwitch {
