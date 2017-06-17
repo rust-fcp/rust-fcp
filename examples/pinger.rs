@@ -24,6 +24,7 @@ use fcp::data_packet::DataPacket;
 use fcp::data_packet::Payload as DataPayload;
 use fcp::encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 use fcp::passive_switch::{PassiveSwitch, Interface};
+use fcp::udp_handler::UdpHandler;
 
 use fcp::node::{Address, Node};
 use fcp::router::Router;
@@ -57,8 +58,8 @@ fn make_reply<PeerId: Clone>(replied_to_packet: &SwitchPacket, reply_content: Ve
 /// Main data structure of the switch.
 struct Pinger {
     /// The socket used for receiving and sending UDP packets to peers.
-    sock: UdpSocket,
-    inner: PassiveSwitch<String, SocketAddr>,
+    udp_handler: UdpHandler<String>,
+    inner: PassiveSwitch,
 
     ping_targets: Vec<Address>,
     ping_nodes: Vec<Node>,
@@ -71,8 +72,8 @@ impl Pinger {
     /// Instanciates a switch.
     fn new(sock: UdpSocket, interfaces: Vec<Interface<String, SocketAddr>>, my_pk: PublicKey, my_sk: SecretKey, allowed_peers: HashMap<Credentials, String>, ping_targets: Vec<Address>) -> Pinger {
         Pinger {
-            sock: sock,
-            inner: PassiveSwitch::new(interfaces, my_pk, my_sk, allowed_peers),
+            udp_handler: UdpHandler::new(sock, my_pk.clone(), my_sk.clone(), allowed_peers.clone(), interfaces),
+            inner: PassiveSwitch::new(my_pk, my_sk, allowed_peers),
             ping_targets: ping_targets,
             ping_nodes: Vec::new(),
             address_to_handle: HashMap::new(),
@@ -101,17 +102,17 @@ impl Pinger {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let ping = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
             let packet_response = SwitchPacket::new_reply(&switch_packet, SwitchPayload::Control(ping));
-            self.send(packet_response, 0b001);
+            self.dispatch(packet_response, 0b001);
         }
     }
 
 
-    fn send(&mut self, packet: SwitchPacket, from_interface: Director) {
-        let (to_self, forward) = self.inner.forward(packet, from_interface);
+    fn dispatch(&mut self, packet: SwitchPacket, from_interface: Director) {
+        let (to_self, forward) = self.inner.forward(packet, &mut self.udp_handler.interfaces, from_interface);
         to_self.map(|packet| self.on_self_interface_switch_packet(&packet));
         forward.map(|(addr, packets)| {
             for packet in packets {
-                self.sock.send_to(&packet, addr).unwrap();
+                self.udp_handler.sock.send_to(&packet, addr).unwrap();
             }
         });
     }
@@ -149,7 +150,7 @@ impl Pinger {
             }
         }
         for mut packet in packets {
-            self.send(packet, 0b001);
+            self.dispatch(packet, 0b001);
         }
     }
 
@@ -196,7 +197,7 @@ impl Pinger {
             responses = tmp.into_iter().map(|r| make_reply(&switch_packet, r, inner_conn)).collect();
         }
         for mut response in responses {
-            self.send(response, 0b001);
+            self.dispatch(response, 0b001);
         }
     }
 
@@ -288,7 +289,7 @@ impl Pinger {
                 // If it is a ping packet, just reply to it.
                 let control_response = ControlPacket::Pong { version: 18, opaque_data: opaque_data };
                 let mut packet_response = SwitchPacket::new_reply(switch_packet, SwitchPayload::Control(control_response));
-                self.send(packet_response, 0b001);
+                self.dispatch(packet_response, 0b001);
 
                 self.random_send_switch_ping(switch_packet);
             },
@@ -336,65 +337,24 @@ impl Pinger {
         }
     }
 
-    // Find what interface a UDP packet is coming from, using its emitted
-    // IP address.
-    fn get_incoming_iface_and_open(&mut self, from_addr: SocketAddr, buf: Vec<u8>) -> (&Interface<String, SocketAddr>, Vec<Vec<u8>>) {
-        let mut iface_exists = false;
-        for candidate_interface in self.inner.interfaces.iter_mut() {
-            if candidate_interface.data == from_addr {
-                iface_exists = true;
-                break
-            }
-        }
-
-        if iface_exists {
-            // Workaround for https://github.com/rust-lang/rust/issues/38614
-            for candidate_interface in self.inner.interfaces.iter_mut() {
-                if candidate_interface.data == from_addr {
-                    let messages = candidate_interface.ca_session.unwrap_message(buf).unwrap();
-                    return (candidate_interface, messages);
-                }
-            }
-            panic!("The impossible happened.");
-        }
-        else {
-            // Not a known interface; create one
-            let next_iface_id = (0..0b1000).filter(|candidate| self.inner.interfaces.iter().find(|iface| iface.id == *candidate).is_none()).next().unwrap();
-            let (ca_session, message) = CAWrapper::new_incoming_connection(self.inner.my_pk.clone(), self.inner.my_sk.clone(), Credentials::None, Some(self.inner.allowed_peers.clone()), None, buf).unwrap();
-            let new_iface = Interface { id: next_iface_id, ca_session: ca_session, data: from_addr };
-            self.inner.interfaces.push(new_iface);
-            let interface = self.inner.interfaces.last_mut().unwrap();
-            (interface, vec![message])
-        }
-    }
-
-    /// Called when a UDP packet is received.
-    fn on_outer_ca_message(&mut self, from_addr: SocketAddr, buf: Vec<u8>) {
-        let (iface_id, messages) = {
-            let (interface, messages) = self.get_incoming_iface_and_open(from_addr, buf);
-            (interface.id, messages)
-        };
-        for message in messages {
-            let switch_packet = SwitchPacket { raw: message };
-            self.send(switch_packet, iface_id)
-        }
-    }
 
     fn loop_(&mut self) {
         loop {
-            for interface in self.inner.interfaces.iter_mut() {
+            for interface in self.udp_handler.interfaces.iter_mut() {
                 for packet in interface.ca_session.upkeep() {
-                    self.sock.send_to(&packet, interface.data).unwrap();
+                    self.udp_handler.sock.send_to(&packet, interface.data).unwrap();
                 }
             }
 
             self.random_ping_node();
 
-            let mut buf = vec![0u8; 4096];
-            let (nb_bytes, addr) = self.sock.recv_from(&mut buf).unwrap();
-            assert!(nb_bytes < 4096);
-            buf.truncate(nb_bytes);
-            self.on_outer_ca_message(addr, buf);
+            let (director, messages) = {
+                let (interface, messages) = self.udp_handler.receive_one();
+                (interface.id, messages)
+            };
+            for message in messages.into_iter() {
+                self.dispatch(message, director);
+            }
         }
     }
 }

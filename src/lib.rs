@@ -4,9 +4,6 @@ extern crate simple_bencode;
 extern crate simple_kbuckets;
 extern crate fcp_cryptoauth;
 
-#[cfg(test)]
-extern crate fcp_cryptoauth;
-
 pub mod operation;
 pub mod control;
 pub mod switch_packet;
@@ -17,6 +14,7 @@ pub mod node;
 pub mod node_store;
 pub mod router;
 pub mod passive_switch;
+pub mod udp_handler;
 
 #[cfg(test)]
 mod tests {

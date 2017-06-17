@@ -21,7 +21,7 @@ pub struct Interface<PeerId: Clone, InterfaceData: Copy> {
 /// This is not a switch as per the FCP's definition, because the FCP
 /// requires switch to send packets and reply to them. This is done
 /// by connecting something to the self-interface of this switch.
-pub struct PassiveSwitch<PeerId: Clone, InterfaceData: Copy> {
+pub struct PassiveSwitch {
     /// My public key, both for outer and inner CryptoAuth sessions.
     pub my_pk: PublicKey,
     /// My public key, both for outer and inner CryptoAuth sessions.
@@ -30,17 +30,14 @@ pub struct PassiveSwitch<PeerId: Clone, InterfaceData: Copy> {
     /// themselves are wrapped in SwitchPackets, which are wrapped in the
     /// outer CryptoAuth sessions.
     pub e2e_conns: HashMap<u32, ([u8; 8], CAWrapper<()>)>,
-    /// Direct (outer) Peers
-    pub interfaces: Vec<Interface<PeerId, InterfaceData>>,
     /// Credentials of peers which are allowed to connect to us.
     pub allowed_peers: HashMap<Credentials, String>,
 }
 
-impl<PeerId: Clone, InterfaceData: Copy> PassiveSwitch<PeerId, InterfaceData> {
+impl PassiveSwitch {
     /// Instanciates a switch.
-    pub fn new(interfaces: Vec<Interface<PeerId, InterfaceData>>, my_pk: PublicKey, my_sk: SecretKey, allowed_peers: HashMap<Credentials, String>) -> PassiveSwitch<PeerId, InterfaceData> {
+    pub fn new(my_pk: PublicKey, my_sk: SecretKey, allowed_peers: HashMap<Credentials, String>) -> PassiveSwitch {
         PassiveSwitch {
-            interfaces: interfaces,
             my_pk: my_pk,
             my_sk: my_sk,
             e2e_conns: HashMap::new(),
@@ -70,7 +67,7 @@ impl<PeerId: Clone, InterfaceData: Copy> PassiveSwitch<PeerId, InterfaceData> {
     /// `(Some(packet), None)`.
     /// Else, returns `(None, Some((director, raw_packets)))`; `raw_packet` is
     /// expected to be sent as-is over the network (eg. in a UDP datagram).
-    pub fn forward(&mut self, mut packet: SwitchPacket, from_interface: Director)
+    pub fn forward<PeerId: Clone, InterfaceData: Copy>(&mut self, mut packet: SwitchPacket, interfaces: &mut Vec<Interface<PeerId, InterfaceData>>, from_interface: Director)
             -> (Option<SwitchPacket>, Option<(InterfaceData, Vec<Vec<u8>>)>) {
         // Logically advance the packet through an interface.
         let routing_decision = packet.switch(3, &(self.reverse_iface_id(from_interface) as u64));
@@ -81,7 +78,7 @@ impl<PeerId: Clone, InterfaceData: Copy> PassiveSwitch<PeerId, InterfaceData> {
             }
             RoutingDecision::Forward(director) => {
                 // Packet is sent to a peer.
-                for interface in self.interfaces.iter_mut() {
+                for interface in interfaces.iter_mut() {
                     if interface.id as u64 == director {
                         // Wrap the packet with the outer CryptoAuth session
                         // of this peer, and send it.
