@@ -1,17 +1,20 @@
 [package]
-name = "fcp_switching"
+name = "fcp"
 version = "0.1.0"
 authors = ["Valentin Lorentz <progval+fcp@progval.net>"]
-description = "Implementation of the Futuristic Connectivity Protocol's Switching algorithms and decoders."
+description = "Implementation of the Futuristic Connectivity Protocol's Switching/Routing algorithms and decoders."
 license = "MIT"
-repository = "https://github.com/rust-fcp/rust-fcp-switching"
+repository = "https://github.com/rust-fcp/rust-fcp"
 readme = "README.md"
 
 [dependencies]
 byteorder = "^0.5.3"
 hex = "^0.2.0"
 simple_bencode = "^0.1.4"
+simple_kbuckets = "^0.2.0"
 
 [dev-dependencies]
-fcp_cryptoauth = "^0.1.0"
+fcp_cryptoauth = { git = "https://github.com/rust-fcp/rust-fcp-cryptoauth.git" }
+byteorder = "^0.5.3"
 rand = "^0.3.15"
+hex = "*"

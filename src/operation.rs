@@ -79,7 +79,7 @@ pub fn u64_from_label(label: Label) -> u64 {
 /// https://github.com/cjdelisle/cjdns/blob/cjdns-v17.4/doc/Whitepaper.md#example :
 ///
 /// ```
-/// # use fcp_switching::operation::*;
+/// # use fcp::operation::*;
 /// let mut label: Label = label_from_u64(0b000000000000000000000000000000000_0001_011010_100101101_10111_0100011);
 ///
 /// let (label, decision) = switch(&label, 7, &0b1000000);
@@ -106,7 +106,7 @@ pub fn u64_from_label(label: Label) -> u64 {
 /// Supports non-canonical self-interfaces:
 /// 
 /// ```
-/// # use fcp_switching::operation::*;
+/// # use fcp::operation::*;
 /// let label: Label = label_from_u64(0b010101_110110011_11001_1000000_0000000000000000000000000000000_110001);
 /// let (label, decision) = switch(&label, 6, &0b100110);
 /// assert_eq!(RoutingDecision::SelfInterface(0b110001), decision);
@@ -173,7 +173,7 @@ const BYTE_REVERSE_TABLE: [u8; 256] = [
 /// # Examples
 ///
 /// ```
-/// # use fcp_switching::operation::*;
+/// # use fcp::operation::*;
 /// let mut label: Label = label_from_u64(0b110110011_11001_1000000_000000000000000000000000000_0001_101011_011010);
 /// println!("{:b}", u64_from_label(label));
 /// reverse_label(&mut label);
