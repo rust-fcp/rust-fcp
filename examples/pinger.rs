@@ -4,9 +4,6 @@ extern crate byteorder;
 extern crate fcp_cryptoauth;
 extern crate fcp;
 
-use byteorder::BigEndian;
-use byteorder::ByteOrder;
-
 use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv6Addr};
 use std::iter::FromIterator;
 use std::collections::HashMap;
@@ -17,7 +14,7 @@ use fcp_cryptoauth::keys::ToBase32;
 
 use fcp::switch_packet::SwitchPacket;
 use fcp::switch_packet::Payload as SwitchPayload;
-use fcp::operation::{RoutingDecision, reverse_label, Director};
+use fcp::operation::{reverse_label, Director};
 use fcp::control::ControlPacket;
 use fcp::route_packet::{RoutePacket, RoutePacketBuilder, NodeData};
 use fcp::data_packet::DataPacket;
@@ -57,22 +54,6 @@ impl Pinger {
             address_to_handle: HashMap::new(),
             router: Router::new(Address::from(&publickey_to_ipv6addr(&my_pk)))
             }
-    }
-
-    /// Takes a 3-bit interface id, and reverse its bits.
-    /// Used to compute reverse paths.
-    fn reverse_iface_id(&self, iface_id: u8) -> u8 {
-        match iface_id {
-            0b000 => 0b000,
-            0b001 => 0b100,
-            0b010 => 0b010,
-            0b011 => 0b110,
-            0b100 => 0b001,
-            0b101 => 0b101,
-            0b110 => 0b011,
-            0b111 => 0b111,
-            _ => panic!("Iface id greater than 0b111"),
-        }
     }
 
     /// Sometimes (random) sends a switch as a reply to the packet.
@@ -127,7 +108,7 @@ impl Pinger {
                 packets.push(switch_packet);
             }
         }
-        for mut packet in packets {
+        for packet in packets {
             self.dispatch(packet, 0b001);
         }
     }
@@ -174,7 +155,7 @@ impl Pinger {
             let tmp = inner_conn.wrap_message_immediately(&getpeers_response.raw);
             responses = tmp.into_iter().map(|r| make_reply(&switch_packet, r, inner_conn)).collect();
         }
-        for mut response in responses {
+        for response in responses {
             self.dispatch(response, 0b001);
         }
     }
@@ -266,7 +247,7 @@ impl Pinger {
             Some(SwitchPayload::Control(ControlPacket::Ping { opaque_data, .. })) => {
                 // If it is a ping packet, just reply to it.
                 let control_response = ControlPacket::Pong { version: 18, opaque_data: opaque_data };
-                let mut packet_response = SwitchPacket::new_reply(switch_packet, SwitchPayload::Control(control_response));
+                let packet_response = SwitchPacket::new_reply(switch_packet, SwitchPayload::Control(control_response));
                 self.dispatch(packet_response, 0b001);
 
                 self.random_send_switch_ping(switch_packet);

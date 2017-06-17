@@ -1,4 +1,4 @@
-use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv6Addr};
+use std::net::{UdpSocket, SocketAddr};
 use std::collections::HashMap;
 
 use fcp_cryptoauth::{CAWrapper, PublicKey, SecretKey, Credentials};
