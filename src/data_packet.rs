@@ -46,7 +46,7 @@ impl DataPacket {
         BigEndian::read_u16(&self.raw[2..4])
     }
 
-    pub fn payload(self) -> Result<Payload, String> {
+    pub fn payload(&self) -> Result<Payload, String> {
         let content_type = self.content_type();
         match content_type {
             256 => {

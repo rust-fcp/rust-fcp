@@ -7,10 +7,10 @@ use encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 use operation::Label;
 use node_store::{NodeStore, GetNodeResult};
 use node::{Address, Node};
+use plumbing::RouterTrait;
+use session_manager::SessionHandle;
 
 const PROTOCOL_VERSION: i64 = 18;
-
-type SessionHandle = u32;
 
 /// Wrapper of `NodeStore` that reads/writes network packets.
 /// TODO: Check paths are valid before inserting them (eg. send a
@@ -94,10 +94,10 @@ impl Router {
                 .finalize();
         vec![response]
     }
+}
 
-    /// Called when a RoutePacket is received from the network.
-    /// Optionally returns RoutePackets to send back.
-    pub fn on_route_packet(&mut self, packet: &RoutePacket, path: Label, handle: u32, pk: PublicKey) -> Vec<RoutePacket> {
+impl RouterTrait for Router {
+    fn on_route_packet(&mut self, packet: &RoutePacket, path: Label, handle: u32, pk: PublicKey) -> Vec<RoutePacket> {
         let responses = match packet.query.as_ref().map(String::as_ref) {
             Some("gp") => self.on_getpeers(packet, handle),
             _ => Vec::new(),
@@ -108,3 +108,4 @@ impl Router {
         responses
     }
 }
+
