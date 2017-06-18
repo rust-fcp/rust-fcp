@@ -14,7 +14,7 @@ use fcp_cryptoauth::keys::ToBase32;
 
 use fcp::switch_packet::SwitchPacket;
 use fcp::switch_packet::Payload as SwitchPayload;
-use fcp::operation::{reverse_label, Director, Label};
+use fcp::operation::{Director, ForwardPath};
 use fcp::control::ControlPacket;
 use fcp::route_packet::{RoutePacket, RoutePacketBuilder, NodeData};
 use fcp::data_packet::DataPacket;
@@ -66,10 +66,10 @@ impl Pinger {
     }
 
     /// Sometimes (random) sends a switch as a reply to the packet.
-    fn random_send_switch_ping(&mut self, handle: SessionHandle, label: &Label) {
+    fn random_send_switch_ping(&mut self, handle: SessionHandle, path: ForwardPath) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let ping = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
-            let packet_response = new_from_raw_content(label, ping.encode(), Some(handle));
+            let packet_response = new_from_raw_content(path, ping.encode(), Some(handle));
             self.plumbing.dispatch(packet_response, 0b001);
         }
     }
@@ -97,7 +97,7 @@ impl Pinger {
             let &mut (path, ref mut inner_conn) = self.plumbing.session_manager.get_mut(handle).unwrap();
             println!("Sending inner ca message to handle {} with path {:?}: {}", handle, path, message);
             for packet_response in inner_conn.wrap_message_immediately(&message.raw) {
-                let switch_packet = SwitchPacket::new(&path, SwitchPayload::CryptoAuthData(inner_conn.peer_session_handle().unwrap(), packet_response));
+                let switch_packet = SwitchPacket::new(path, SwitchPayload::CryptoAuthData(inner_conn.peer_session_handle().unwrap(), packet_response));
                 packets.push(switch_packet);
             }
         }
@@ -164,17 +164,17 @@ impl Pinger {
         loop {
             let mut packets = Vec::new();
             let mut targets = Vec::new();
-            for (handle, &mut (label, ref mut conn)) in self.plumbing.session_manager.e2e_conns.iter_mut() {
+            for (handle, &mut (path, ref mut conn)) in self.plumbing.session_manager.e2e_conns.iter_mut() {
                 for ca_message in conn.upkeep() {
-                    packets.push(new_from_raw_content(&label, ca_message, Some(*handle)));
+                    packets.push(new_from_raw_content(path, ca_message, Some(*handle)));
                 }
-                targets.push((*handle, label))
+                targets.push((*handle, path))
             }
             for packet in packets {
                 let packet = self.plumbing.dispatch(packet, 0b001);
             }
-            for (handle, label) in targets {
-                self.random_send_switch_ping(handle, &label);
+            for (handle, path) in targets {
+                self.random_send_switch_ping(handle, path);
             }
 
             self.random_ping_node();

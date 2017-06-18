@@ -4,7 +4,7 @@ use rand;
 use rand::Rng;
 use fcp_cryptoauth::{CAWrapper, PublicKey, SecretKey, Credentials};
 
-use operation::{Label, reverse_label};
+use operation::{ForwardPath, BackwardPath};
 use switch_packet::SwitchPacket;
 
 pub type SessionHandle = u32;
@@ -15,7 +15,7 @@ pub struct SessionManager {
     /// CryptoAuth sessions used to talk to switches/routers. Their packets
     /// themselves are wrapped in SwitchPackets, which are wrapped in the
     /// outer CryptoAuth sessions.
-    pub e2e_conns: HashMap<SessionHandle, (Label, CAWrapper<()>)>,
+    pub e2e_conns: HashMap<SessionHandle, (ForwardPath, CAWrapper<()>)>,
 }
 
 impl SessionManager {
@@ -27,7 +27,7 @@ impl SessionManager {
             }
         }
     }
-    pub fn add_outgoing(&mut self, path: Label, node_pk: PublicKey, credentials: Credentials) -> SessionHandle {
+    pub fn add_outgoing(&mut self, path: ForwardPath, node_pk: PublicKey, credentials: Credentials) -> SessionHandle {
         let conn = CAWrapper::new_outgoing_connection(
                 self.my_pk.clone(), self.my_sk.clone(),
                 node_pk,
@@ -42,16 +42,12 @@ impl SessionManager {
         // TODO: handle Key packets
         let handle = self.gen_handle();
         let (inner_conn, inner_packet) = CAWrapper::new_incoming_connection(self.my_pk, self.my_sk.clone(), Credentials::None, None, Some(handle), packet).unwrap();
-        let path = {
-            let mut path = switch_packet.label();
-            reverse_label(&mut path);
-            path
-        };
+        let path = BackwardPath::from(switch_packet.label()).reverse();
         self.e2e_conns.insert(handle, (path, inner_conn));
         (handle, inner_packet)
     }
 
-    pub fn get_mut(&mut self, handle: SessionHandle) -> Option<&mut (Label, CAWrapper<()>)> {
+    pub fn get_mut(&mut self, handle: SessionHandle) -> Option<&mut (ForwardPath, CAWrapper<()>)> {
         self.e2e_conns.get_mut(&handle)
     }
 }

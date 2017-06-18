@@ -4,7 +4,7 @@ use passive_switch::PassiveSwitch;
 use switch_packet::SwitchPacket;
 use switch_packet::Payload as SwitchPayload;
 use route_packet::RoutePacket;
-use operation::{Label, Director};
+use operation::{Label, BackwardPath, ForwardPath, Director};
 use control::ControlPacket;
 use session_manager::SessionManager;
 use data_packet::DataPacket;
@@ -15,7 +15,7 @@ use session_manager::SessionHandle;
 pub trait RouterTrait {
     /// Called when a RoutePacket is received from the network.
     /// Optionally returns RoutePackets to send back.
-    fn on_route_packet(&mut self, packet: &RoutePacket, path: Label, handle: u32, pk: PublicKey) -> Vec<RoutePacket>;
+    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: u32, pk: PublicKey) -> Vec<RoutePacket>;
 }
 
 pub trait NetworkAdapterTrait {
@@ -91,14 +91,14 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
 
     /// Called when a CryptoAuth-wrapped message is received through an end-to-end
     /// session.
-    fn on_data_packet(&mut self, data_packet: &DataPacket, handle: SessionHandle, label: Label) {
+    fn on_data_packet(&mut self, data_packet: &DataPacket, handle: SessionHandle, path: BackwardPath) {
         let mut responses = Vec::new();
         {
             let &mut (_path, ref mut conn) = self.session_manager.get_mut(handle).unwrap();
 
             let route_packets = match data_packet.payload().unwrap() {
                 DataPayload::RoutePacket(route_packet) => {
-                    self.router.on_route_packet(&route_packet, label, handle, conn.their_pk().clone())
+                    self.router.on_route_packet(&route_packet, path, handle, conn.their_pk().clone())
                 }
             };
             for route_packet in route_packets.into_iter() {
@@ -106,7 +106,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 responses.extend(conn
                         .wrap_message_immediately(&getpeers_response.raw)
                         .into_iter()
-                        .map(|r| new_from_raw_content(&label, r, conn.peer_session_handle())));
+                        .map(|r| new_from_raw_content(path.reverse(), r, conn.peer_session_handle())));
             }
         }
         for response in responses {
@@ -116,7 +116,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
 
     pub fn dispatch(&mut self, packet: SwitchPacket, from_interface: Director)
             -> Option<(SessionHandle, Vec<DataPacket>)> {
-        let label = packet.label();
+        let path = BackwardPath::from(packet.label());
         let (to_self, forward) = self.switch.forward(packet, from_interface);
         for (interface, packet) in forward { self.network_adapter.send_to(interface, &packet) };
 
@@ -124,7 +124,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
             .and_then(|packet| self.on_self_interface_switch_packet(&packet))
             .map(|(handle, packets)| {
                 for packet in packets.iter() {
-                    self.on_data_packet(&packet, handle, label)
+                    self.on_data_packet(&packet, handle, path)
                 }
                 (handle, packets)
             })

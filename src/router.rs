@@ -4,7 +4,7 @@ use route_packet::{RoutePacket, RoutePacketBuilder, NodeData};
 use std::iter::FromIterator;
 use encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 
-use operation::Label;
+use operation::{ForwardPath, BackwardPath};
 use node_store::{NodeStore, GetNodeResult};
 use node::{Address, Node};
 use plumbing::RouterTrait;
@@ -18,7 +18,7 @@ const PROTOCOL_VERSION: i64 = 18;
 pub struct Router {
     my_pk: PublicKey,
     node_store: NodeStore,
-    peers: Vec<(SessionHandle, PublicKey, Label)>,
+    peers: Vec<(SessionHandle, PublicKey, ForwardPath)>,
 }
 
 impl Router {
@@ -79,7 +79,7 @@ impl Router {
             if peer_handle != handle {
                 nodes.push(NodeData {
                     public_key: pk.0,
-                    path: path,
+                    path: ForwardPath::into(path),
                     version: 18, // TODO
                 });
             }
@@ -97,12 +97,12 @@ impl Router {
 }
 
 impl RouterTrait for Router {
-    fn on_route_packet(&mut self, packet: &RoutePacket, path: Label, handle: u32, pk: PublicKey) -> Vec<RoutePacket> {
+    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: u32, pk: PublicKey) -> Vec<RoutePacket> {
         let responses = match packet.query.as_ref().map(String::as_ref) {
             Some("gp") => self.on_getpeers(packet, handle),
             _ => Vec::new(),
         };
-        let node = Node::new(pk.0, path, packet.protocol_version as u64);
+        let node = Node::new(pk.0, path.reverse(), packet.protocol_version as u64);
         let addr = publickey_to_ipv6addr(&pk).into();
         self.update(addr, node);
         responses

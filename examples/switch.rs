@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use fcp_cryptoauth::*;
 
 use fcp::switch_packet::SwitchPacket;
-use fcp::operation::{reverse_label, Director, Label};
+use fcp::operation::{Director, ForwardPath, BackwardPath};
 use fcp::control::ControlPacket;
 use fcp::route_packet::{RoutePacket, RoutePacketBuilder, NodeData};
 use fcp::data_packet::DataPacket;
@@ -54,16 +54,16 @@ impl UdpSwitch {
     }
 
     /// Sometimes (random) sends a switch as a reply to the packet.
-    fn random_send_switch_ping(&mut self, handle: SessionHandle, label: &Label) {
+    fn random_send_switch_ping(&mut self, handle: SessionHandle, path: ForwardPath) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let ping = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
-            let packet_response = new_from_raw_content(label, ping.encode(), Some(handle));
+            let packet_response = new_from_raw_content(path, ping.encode(), Some(handle));
             self.plumbing.dispatch(packet_response, 0b001);
         }
     }
             
     /// Sometimes (random) sends a `gp` query.
-    fn random_send_getpeers(&mut self, handle: SessionHandle, label: &Label) {
+    fn random_send_getpeers(&mut self, handle: SessionHandle, path: ForwardPath) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
             let route_packet = RoutePacketBuilder::new(18, b"blah".to_vec())
@@ -78,7 +78,7 @@ impl UdpSwitch {
                 let &mut (_path, ref mut inner_conn) = self.plumbing.session_manager.get_mut(handle).unwrap();
                 println!("Sending data packet: {}", getpeers_message);
                 for packet_response in inner_conn.wrap_message_immediately(&getpeers_message.raw) {
-                    responses.push(new_from_raw_content(label, packet_response, Some(handle)));
+                    responses.push(new_from_raw_content(path, packet_response, Some(handle)));
                 }
             }
             for response in responses {
@@ -95,18 +95,18 @@ impl UdpSwitch {
         loop {
             let mut packets = Vec::new();
             let mut targets = Vec::new();
-            for (handle, &mut (label, ref mut conn)) in self.plumbing.session_manager.e2e_conns.iter_mut() {
+            for (handle, &mut (path, ref mut conn)) in self.plumbing.session_manager.e2e_conns.iter_mut() {
                 for ca_message in conn.upkeep() {
-                    packets.push(new_from_raw_content(&label, ca_message, Some(*handle)));
+                    packets.push(new_from_raw_content(path, ca_message, Some(*handle)));
                 }
-                targets.push((*handle, label))
+                targets.push((*handle, path))
             }
             for packet in packets {
                 let packet = self.plumbing.dispatch(packet, 0b001);
             }
-            for (handle, label) in targets {
-                self.random_send_switch_ping(handle, &label);
-                self.random_send_getpeers(handle, &label)
+            for (handle, path) in targets {
+                self.random_send_switch_ping(handle, path);
+                self.random_send_getpeers(handle, path)
             }
 
             let (director, messages) = self.plumbing.network_adapter.recv_from();

@@ -5,7 +5,7 @@
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 
-use operation::{switch, reverse_label, Director, RoutingDecision, Label};
+use operation::{switch, reverse_label, Director, RoutingDecision, Label, ForwardPath, BackwardPath};
 use control::ControlPacket;
 
 #[derive(Debug)]
@@ -24,9 +24,9 @@ pub struct SwitchPacket {
 
 impl SwitchPacket {
     /// Returns a new packet, constructed from its route and its payload.
-    pub fn new(route_label: &[u8; 8], payload: Payload) -> SwitchPacket {
+    pub fn new(path: ForwardPath, payload: Payload) -> SwitchPacket {
         let mut raw = vec![0u8; 12];
-        raw[0..8].copy_from_slice(route_label);
+        raw[0..8].copy_from_slice(&Label::from(path));
         match payload {
             Payload::Control(msg) => {
                 raw.append(&mut vec![0xff, 0xff, 0xff, 0xff]);
@@ -52,9 +52,8 @@ impl SwitchPacket {
 
     /// Returns a new packet, constructed as a reply of a received one.
     pub fn new_reply(received: &SwitchPacket, payload: Payload) -> SwitchPacket {
-        let mut response_label = received.label();
-        reverse_label(&mut response_label);
-        SwitchPacket::new(&response_label, payload)
+        let mut path = BackwardPath::from(received.label()).reverse();
+        SwitchPacket::new(path, payload)
     }
 
     /// Returns the address label of the packet.

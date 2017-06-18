@@ -7,6 +7,36 @@ use byteorder::BigEndian;
 
 /// An encoding of a path in the network
 pub type Label = [u8; 8];
+
+/// A label for a switch packet sent to me
+#[derive(Copy, Clone, Debug)]
+pub struct BackwardPath(pub Label);
+
+/// A label for a switch packet sent by me
+#[derive(Copy, Clone, Debug)]
+pub struct ForwardPath(pub Label);
+
+impl From<Label> for BackwardPath {
+    #[inline(always)]
+    fn from(label: Label) -> BackwardPath {
+        BackwardPath(label)
+    }
+}
+impl BackwardPath {
+    #[inline(always)]
+    pub fn reverse(mut self) -> ForwardPath {
+        reverse_label(&mut self.0);
+        ForwardPath(self.0)
+    }
+}
+impl From<ForwardPath> for Label {
+    #[inline(always)]
+    fn from(path: ForwardPath) -> Label {
+        path.0
+    }
+}
+
+
 /// An interface identifier, unique to a node.
 pub type Director = u64;
 
@@ -194,4 +224,3 @@ pub fn reverse_label(label: &mut Label) {
         label[i] = tmp;
     }
 }
-

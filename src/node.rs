@@ -5,11 +5,9 @@ use std::hash::{Hash, Hasher};
 
 use simple_kbuckets::Key;
 
-use operation;
+use operation::ForwardPath;
 
 pub const PUBLIC_KEY_LENGTH: usize = 32;
-
-pub type Path = operation::Label;
 
 /// Rotates an IPv6 address 64 bits, which is a required preprocessing
 /// for computing the XOR metric.
@@ -84,12 +82,12 @@ impl Key for Address {
 #[derive(Clone, Debug)]
 pub struct Node {
     public_key: [u8; PUBLIC_KEY_LENGTH],
-    path: Path,
+    path: ForwardPath,
     version: u64,
 }
 
 impl Node {
-    pub fn new(pk: [u8; PUBLIC_KEY_LENGTH], path: Path, version: u64) -> Node {
+    pub fn new(pk: [u8; PUBLIC_KEY_LENGTH], path: ForwardPath, version: u64) -> Node {
         Node {
             public_key: pk,
             path: path,
@@ -99,8 +97,8 @@ impl Node {
     pub fn public_key(&self) -> &[u8; PUBLIC_KEY_LENGTH] {
         &self.public_key
     }
-    pub fn path(&self) -> &Path {
-        &self.path
+    pub fn path(&self) -> ForwardPath {
+        self.path
     }
     pub fn version(&self) -> u64 {
         self.version
