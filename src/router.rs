@@ -107,4 +107,23 @@ impl Router {
         self.update(addr, node);
         responses
     }
+
+    fn send_getpeers(&mut self) -> Vec<(SessionHandle, Label, RoutePacket)> {
+        let mut messages = Vec::new();
+        for &(peer_handle, _pk, path) in self.peers.iter() {
+            let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
+            let route_packet = RoutePacketBuilder::new(18, b"blah".to_vec())
+                    .query("gp".to_owned())
+                    .encoding_index(0)
+                    .encoding_scheme(encoding_scheme)
+                    .target_address(vec![0, 0, 0, 0, 0, 0, 0, 0])
+                    .finalize();
+            messages.push((peer_handle, path, route_packet));
+        }
+        messages
+    }
+
+    pub fn upkeep(&mut self) -> Vec<(SessionHandle, Label, RoutePacket)> {
+        self.send_getpeers()
+    }
 }
