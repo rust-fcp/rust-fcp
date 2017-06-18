@@ -40,7 +40,7 @@ impl UdpSwitch {
         let session_manager = SessionManager {
             my_pk: my_pk.clone(),
             my_sk: my_sk.clone(),
-            e2e_conns: HashMap::new(),
+            sessions: HashMap::new(),
         };
         let plumbing = Plumbing {
             network_adapter: udp_adapter,
@@ -75,9 +75,9 @@ impl UdpSwitch {
             let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
             let mut responses = Vec::new();
             {
-                let &mut (_path, ref mut inner_conn) = self.plumbing.session_manager.get_mut(handle).unwrap();
+                let session = self.plumbing.session_manager.get_session(handle).unwrap();
                 println!("Sending data packet: {}", getpeers_message);
-                for packet_response in inner_conn.wrap_message_immediately(&getpeers_message.raw) {
+                for packet_response in session.conn.wrap_message_immediately(&getpeers_message.raw) {
                     responses.push(new_from_raw_content(path, packet_response, Some(handle)));
                 }
             }
@@ -95,11 +95,11 @@ impl UdpSwitch {
         loop {
             let mut packets = Vec::new();
             let mut targets = Vec::new();
-            for (handle, &mut (path, ref mut conn)) in self.plumbing.session_manager.e2e_conns.iter_mut() {
-                for ca_message in conn.upkeep() {
-                    packets.push(new_from_raw_content(path, ca_message, Some(*handle)));
+            for (handle, ref mut session) in self.plumbing.session_manager.sessions.iter_mut() {
+                for ca_message in session.conn.upkeep() {
+                    packets.push(new_from_raw_content(session.path, ca_message, Some(*handle)));
                 }
-                targets.push((*handle, path))
+                targets.push((*handle, session.path))
             }
             for packet in packets {
                 let packet = self.plumbing.dispatch(packet, 0b001);

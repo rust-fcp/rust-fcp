@@ -38,7 +38,7 @@ struct Pinger {
 
     ping_targets: Vec<Address>,
     ping_nodes: Vec<Node>,
-    address_to_handle: HashMap<Address, u32>,
+    address_to_handle: HashMap<Address, SessionHandle>,
 }
 
 impl Pinger {
@@ -48,7 +48,7 @@ impl Pinger {
         let session_manager = SessionManager {
             my_pk: my_pk.clone(),
             my_sk: my_sk.clone(),
-            e2e_conns: HashMap::new(),
+            sessions: HashMap::new(),
         };
         let plumbing = Plumbing {
             network_adapter: udp_adapter,
@@ -91,13 +91,13 @@ impl Pinger {
         }
     }
 
-    fn send_message_to_handle(&mut self, handle: u32, message: DataPacket) {
+    fn send_message_to_handle(&mut self, handle: SessionHandle, message: DataPacket) {
         let mut packets = Vec::new();
         {
-            let &mut (path, ref mut inner_conn) = self.plumbing.session_manager.get_mut(handle).unwrap();
-            println!("Sending inner ca message to handle {} with path {:?}: {}", handle, path, message);
-            for packet_response in inner_conn.wrap_message_immediately(&message.raw) {
-                let switch_packet = SwitchPacket::new(path, SwitchPayload::CryptoAuthData(inner_conn.peer_session_handle().unwrap(), packet_response));
+            let session = self.plumbing.session_manager.get_session(handle).unwrap();
+            println!("Sending inner ca message to handle {:?} with path {:?}: {}", handle, session.path, message);
+            for packet_response in session.conn.wrap_message_immediately(&message.raw) {
+                let switch_packet = SwitchPacket::new(session.path, SwitchPayload::CryptoAuthData(handle, packet_response));
                 packets.push(switch_packet);
             }
         }
@@ -164,11 +164,11 @@ impl Pinger {
         loop {
             let mut packets = Vec::new();
             let mut targets = Vec::new();
-            for (handle, &mut (path, ref mut conn)) in self.plumbing.session_manager.e2e_conns.iter_mut() {
-                for ca_message in conn.upkeep() {
-                    packets.push(new_from_raw_content(path, ca_message, Some(*handle)));
+            for (handle, ref mut session) in self.plumbing.session_manager.sessions.iter_mut() {
+                for ca_message in session.conn.upkeep() {
+                    packets.push(new_from_raw_content(session.path, ca_message, Some(*handle)));
                 }
-                targets.push((*handle, path))
+                targets.push((*handle, session.path))
             }
             for packet in packets {
                 let packet = self.plumbing.dispatch(packet, 0b001);

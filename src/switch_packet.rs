@@ -7,12 +7,13 @@ use byteorder::ByteOrder;
 
 use operation::{switch, reverse_label, Director, RoutingDecision, Label, ForwardPath, BackwardPath};
 use control::ControlPacket;
+use session_manager::SessionHandle;
 
 #[derive(Debug)]
 pub enum Payload {
     Control(ControlPacket),
     CryptoAuthHandshake(Vec<u8>),
-    CryptoAuthData(u32, Vec<u8>), // First argument is the session handle
+    CryptoAuthData(SessionHandle, Vec<u8>),
 }
 
 
@@ -39,10 +40,10 @@ impl SwitchPacket {
                 raw.append(&mut msg);
             },
             Payload::CryptoAuthData(session_handle, mut msg) => {
-                assert!(session_handle >= 4);
-                assert!(session_handle != 0xffffffff);
+                assert!(session_handle.0 >= 4);
+                assert!(session_handle.0 != 0xffffffff);
                 let mut raw_handle = vec![0u8; 4];
-                BigEndian::write_u32(&mut raw_handle, session_handle);
+                BigEndian::write_u32(&mut raw_handle, session_handle.0);
                 raw.append(&mut raw_handle);
                 raw.append(&mut msg);
             },
@@ -90,7 +91,7 @@ impl SwitchPacket {
         match BigEndian::read_u32(&self.raw[12..16]) {
             0xffffffff => ControlPacket::decode(&self.raw[16..].to_vec()).map(Payload::Control),
             0 | 1 | 2 | 3 => Some(Payload::CryptoAuthHandshake(self.raw[12..].to_vec())),
-            handle => Some(Payload::CryptoAuthData(handle, self.raw[16..].to_vec())),
+            handle => Some(Payload::CryptoAuthData(SessionHandle(handle), self.raw[16..].to_vec())),
         }
     }
 

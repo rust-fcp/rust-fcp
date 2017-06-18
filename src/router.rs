@@ -63,7 +63,7 @@ impl Router {
     }
 
     /// Reply to `gp` queries by sending a list of my peers.
-    fn on_getpeers(&mut self, packet: &RoutePacket, handle: u32) -> Vec<RoutePacket> {
+    fn on_getpeers(&mut self, packet: &RoutePacket, handle: SessionHandle) -> Vec<RoutePacket> {
         let mut nodes = Vec::new();
         {
             // Add myself
@@ -97,7 +97,7 @@ impl Router {
 }
 
 impl RouterTrait for Router {
-    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: u32, pk: PublicKey) -> Vec<RoutePacket> {
+    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: SessionHandle, pk: PublicKey) -> Vec<RoutePacket> {
         let responses = match packet.query.as_ref().map(String::as_ref) {
             Some("gp") => self.on_getpeers(packet, handle),
             _ => Vec::new(),

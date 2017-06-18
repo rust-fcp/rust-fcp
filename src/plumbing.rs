@@ -4,7 +4,7 @@ use passive_switch::PassiveSwitch;
 use switch_packet::SwitchPacket;
 use switch_packet::Payload as SwitchPayload;
 use route_packet::RoutePacket;
-use operation::{Label, BackwardPath, ForwardPath, Director};
+use operation::{BackwardPath, ForwardPath, Director};
 use control::ControlPacket;
 use session_manager::SessionManager;
 use data_packet::DataPacket;
@@ -15,7 +15,7 @@ use session_manager::SessionHandle;
 pub trait RouterTrait {
     /// Called when a RoutePacket is received from the network.
     /// Optionally returns RoutePackets to send back.
-    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: u32, pk: PublicKey) -> Vec<RoutePacket>;
+    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: SessionHandle, pk: PublicKey) -> Vec<RoutePacket>;
 }
 
 pub trait NetworkAdapterTrait {
@@ -31,12 +31,12 @@ pub struct Plumbing<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> {
 }
 
 impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, NetworkAdapter> {
-    fn on_control_packet(&mut self, packet: ControlPacket, switch_packet: &SwitchPacket) {
+    fn on_control_packet(&mut self, packet: ControlPacket, path: BackwardPath) {
         match packet {
             ControlPacket::Ping { opaque_data, .. } => {
                 // If it is a ping packet, just reply to it.
                 let control_response = ControlPacket::Pong { version: 18, opaque_data: opaque_data };
-                let packet_response = SwitchPacket::new_reply(switch_packet, SwitchPayload::Control(control_response));
+                let packet_response = SwitchPacket::new(path.reverse(), SwitchPayload::Control(control_response));
                 self.dispatch(packet_response, 0b001);
 
             },
@@ -57,7 +57,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
             -> Option<(SessionHandle, Vec<DataPacket>)> {
         match switch_packet.payload() {
             Some(SwitchPayload::Control(control_packet)) => {
-                self.on_control_packet(control_packet, switch_packet);
+                self.on_control_packet(control_packet, switch_packet.label().into());
                 None
             },
             Some(SwitchPayload::CryptoAuthHandshake(handshake)) => {
@@ -73,17 +73,8 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 // If it is a CryptoAuth data packet, first read the session
                 // handle to know which CryptoAuth session to use to
                 // decrypt it.
-                let inner_packets = match self.session_manager.get_mut(handle) {
-                    Some(&mut (_path, ref mut inner_conn)) => {
-                        match inner_conn.unwrap_message(ca_message) {
-                            Ok(inner_packets) => inner_packets,
-                            Err(e) => panic!("CA error: {:?}", e),
-                        }
-                    }
-                    None => panic!("Received unknown handle.")
-                };
-                let data_packets = inner_packets.into_iter().map(|p| DataPacket { raw: p }).collect();
-                Some((handle, data_packets))
+                let inner_packets = self.session_manager.unwrap_message(handle, ca_message);
+                Some((handle, inner_packets))
             }
             _ => panic!("Can only handle Pings, Pongs, and CA."),
         }
@@ -94,19 +85,19 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
     fn on_data_packet(&mut self, data_packet: &DataPacket, handle: SessionHandle, path: BackwardPath) {
         let mut responses = Vec::new();
         {
-            let &mut (_path, ref mut conn) = self.session_manager.get_mut(handle).unwrap();
+            let session = self.session_manager.get_session(handle).unwrap();
 
             let route_packets = match data_packet.payload().unwrap() {
                 DataPayload::RoutePacket(route_packet) => {
-                    self.router.on_route_packet(&route_packet, path, handle, conn.their_pk().clone())
+                    self.router.on_route_packet(&route_packet, path, handle, session.conn.their_pk().clone())
                 }
             };
             for route_packet in route_packets.into_iter() {
                 let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
-                responses.extend(conn
+                responses.extend(session.conn
                         .wrap_message_immediately(&getpeers_response.raw)
                         .into_iter()
-                        .map(|r| new_from_raw_content(path.reverse(), r, conn.peer_session_handle())));
+                        .map(|r| new_from_raw_content(path.reverse(), r, Some(handle))));
             }
         }
         for response in responses {
