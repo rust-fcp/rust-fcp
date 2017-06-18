@@ -93,16 +93,14 @@ impl UdpSwitch {
 
     fn loop_(&mut self) {
         loop {
-            let mut packets = Vec::new();
+            let mut packets = self.plumbing.session_manager.upkeep();
+            for packet in packets {
+                let self.plumbing.dispatch(packet, 0b001);
+            }
+
             let mut targets = Vec::new();
             for (handle, ref mut session) in self.plumbing.session_manager.sessions.iter_mut() {
-                for ca_message in session.conn.upkeep() {
-                    packets.push(new_from_raw_content(session.path, ca_message, Some(*handle)));
-                }
-                targets.push((*handle, session.path))
-            }
-            for packet in packets {
-                let packet = self.plumbing.dispatch(packet, 0b001);
+                targets.push((*handle, path))
             }
             for (handle, path) in targets {
                 self.random_send_switch_ping(handle, path);

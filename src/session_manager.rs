@@ -64,4 +64,13 @@ impl SessionManager {
     pub fn get_session(&mut self, handle: SessionHandle) -> Option<&mut Session> {
         self.sessions.get_mut(&handle)
     }
+
+    pub fn upkeep(&mut self) -> Vec<SwitchPacket> {
+        for (handle, ref mut session) in self..sessions.iter_mut() {
+            for ca_message in session.conn.upkeep() {
+                packets.push(new_from_raw_content(session.path, ca_message, Some(*handle)));
+            }
+            targets.push((*handle, session.path))
+        }
+    }
 }
