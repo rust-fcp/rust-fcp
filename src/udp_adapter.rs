@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use fcp_cryptoauth::{CAWrapper, PublicKey, SecretKey, Credentials};
 
-use switch_packet::SwitchPacket;
+use packets::switch::SwitchPacket;
 use operation::Director;
 use plumbing::NetworkAdapterTrait;
 

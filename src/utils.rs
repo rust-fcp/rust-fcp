@@ -3,8 +3,8 @@ use byteorder::ByteOrder;
 use fcp_cryptoauth::CAWrapper;
 
 use operation::{ForwardPath, BackwardPath, reverse_label};
-use switch_packet::SwitchPacket;
-use switch_packet::Payload as SwitchPayload;
+use packets::switch::SwitchPacket;
+use packets::switch::Payload as SwitchPayload;
 use session_manager::SessionHandle;
 
 /// Creates a switch packet from a raw payload.

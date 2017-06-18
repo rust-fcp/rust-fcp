@@ -5,8 +5,9 @@ use rand::Rng;
 use fcp_cryptoauth::{CAWrapper, PublicKey, SecretKey, Credentials};
 
 use operation::{ForwardPath, BackwardPath};
-use switch_packet::SwitchPacket;
-use data_packet::DataPacket;
+use packets::switch::SwitchPacket;
+use packets::data::DataPacket;
+use utils::new_from_raw_content;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct SessionHandle(pub u32);
@@ -66,11 +67,12 @@ impl SessionManager {
     }
 
     pub fn upkeep(&mut self) -> Vec<SwitchPacket> {
-        for (handle, ref mut session) in self..sessions.iter_mut() {
+        let mut packets = Vec::new();
+        for (handle, ref mut session) in self.sessions.iter_mut() {
             for ca_message in session.conn.upkeep() {
                 packets.push(new_from_raw_content(session.path, ca_message, Some(*handle)));
             }
-            targets.push((*handle, session.path))
         }
+        packets
     }
 }

@@ -1,14 +1,14 @@
 use fcp_cryptoauth::PublicKey;
 
 use passive_switch::PassiveSwitch;
-use switch_packet::SwitchPacket;
-use switch_packet::Payload as SwitchPayload;
-use route_packet::RoutePacket;
+use packets::switch::SwitchPacket;
+use packets::switch::Payload as SwitchPayload;
+use packets::route::RoutePacket;
 use operation::{BackwardPath, ForwardPath, Director};
-use control::ControlPacket;
+use packets::control::ControlPacket;
 use session_manager::SessionManager;
-use data_packet::DataPacket;
-use data_packet::Payload as DataPayload;
+use packets::data::DataPacket;
+use packets::data::Payload as DataPayload;
 use utils::{new_from_raw_content, make_reply};
 use session_manager::SessionHandle;
 

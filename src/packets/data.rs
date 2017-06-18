@@ -5,11 +5,11 @@ use std::fmt;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 
-use route_packet;
+use packets::route::RoutePacket;
 
 #[derive(Debug, Clone)]
 pub enum Payload {
-    RoutePacket(route_packet::RoutePacket),
+    RoutePacket(RoutePacket),
 }
 
 #[derive(Debug, Clone)]
@@ -50,7 +50,7 @@ impl DataPacket {
         let content_type = self.content_type();
         match content_type {
             256 => {
-                match route_packet::RoutePacket::decode(&self.raw[4..]) {
+                match RoutePacket::decode(&self.raw[4..]) {
                     Ok(packet) => Ok(Payload::RoutePacket(packet)),
                     Err(e) => Err(format!("Could not decode route packet: {:?}", e)), // TODO: proper error handling
                 }

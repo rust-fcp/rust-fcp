@@ -6,7 +6,7 @@ use byteorder::BigEndian;
 use byteorder::ByteOrder;
 
 use operation::{switch, reverse_label, Director, RoutingDecision, Label, ForwardPath, BackwardPath};
-use control::ControlPacket;
+use packets::control::ControlPacket;
 use session_manager::SessionHandle;
 
 #[derive(Debug)]
@@ -123,8 +123,8 @@ impl SwitchPacket {
 mod test {
     use hex::FromHex;
     use super::*;
-    use super::super::operation::RoutingDecision;
-    use super::super::control::ControlPacket;
+    use super::super::super::operation::RoutingDecision;
+    use super::super::super::packets::control::ControlPacket;
 
     #[test]
     fn switch_and_reply() {

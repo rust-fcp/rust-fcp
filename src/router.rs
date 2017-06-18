@@ -1,6 +1,6 @@
 use fcp_cryptoauth::{PublicKey, publickey_to_ipv6addr};
 
-use route_packet::{RoutePacket, RoutePacketBuilder, NodeData};
+use packets::route::{RoutePacket, RoutePacketBuilder, NodeData};
 use std::iter::FromIterator;
 use encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 

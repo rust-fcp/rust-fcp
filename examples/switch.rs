@@ -10,12 +10,12 @@ use std::collections::HashMap;
 
 use fcp_cryptoauth::*;
 
-use fcp::switch_packet::SwitchPacket;
+use fcp::packets::switch::SwitchPacket;
 use fcp::operation::{Director, ForwardPath, BackwardPath};
-use fcp::control::ControlPacket;
-use fcp::route_packet::{RoutePacket, RoutePacketBuilder, NodeData};
-use fcp::data_packet::DataPacket;
-use fcp::data_packet::Payload as DataPayload;
+use fcp::packets::control::ControlPacket;
+use fcp::packets::route::{RoutePacket, RoutePacketBuilder, NodeData};
+use fcp::packets::data::DataPacket;
+use fcp::packets::data::Payload as DataPayload;
 use fcp::encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 use fcp::passive_switch::PassiveSwitch;
 use fcp::udp_adapter::{UdpAdapter, UdpPeer};
@@ -95,12 +95,12 @@ impl UdpSwitch {
         loop {
             let mut packets = self.plumbing.session_manager.upkeep();
             for packet in packets {
-                let self.plumbing.dispatch(packet, 0b001);
+                self.plumbing.dispatch(packet, 0b001);
             }
 
             let mut targets = Vec::new();
             for (handle, ref mut session) in self.plumbing.session_manager.sessions.iter_mut() {
-                targets.push((*handle, path))
+                targets.push((*handle, session.path))
             }
             for (handle, path) in targets {
                 self.random_send_switch_ping(handle, path);

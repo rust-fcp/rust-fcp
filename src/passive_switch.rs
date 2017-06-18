@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use fcp_cryptoauth::{CAWrapper, PublicKey, SecretKey, Credentials};
 
 use operation::{RoutingDecision, Director};
-use switch_packet::SwitchPacket;
+use packets::switch::SwitchPacket;
 
 /// A switch that only forwards packets.
 ///
