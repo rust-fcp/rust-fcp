@@ -5,6 +5,7 @@ extern crate fcp_cryptoauth;
 extern crate fcp;
 
 use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv6Addr};
+use std::iter::FromIterator;
 use std::collections::HashMap;
 
 use fcp_cryptoauth::*;
@@ -13,8 +14,10 @@ use fcp::switch_packet::SwitchPacket;
 use fcp::switch_packet::Payload as SwitchPayload;
 use fcp::operation::{reverse_label, Director};
 use fcp::control::ControlPacket;
+use fcp::route_packet::{RoutePacket, RoutePacketBuilder, NodeData};
 use fcp::data_packet::DataPacket;
 use fcp::data_packet::Payload as DataPayload;
+use fcp::encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 use fcp::passive_switch::{PassiveSwitch, Interface};
 use fcp::udp_handler::UdpHandler;
 use fcp::utils::make_reply;
@@ -60,20 +63,26 @@ impl UdpSwitch {
     }
             
     /// Sometimes (random) sends a `gp` query.
-    fn random_send_getpeers(&mut self) {
+    fn random_send_getpeers(&mut self, reply_to: &SwitchPacket, handle: u32) {
         if rand::thread_rng().next_u32() > 0xafffffff {
-            let messages = self.router.upkeep();
-            let mut packets = Vec::new();
-            for (handle, label, route_message) in messages {
+            let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
+            let route_packet = RoutePacketBuilder::new(18, b"blah".to_vec())
+                    .query("gp".to_owned())
+                    .encoding_index(0)
+                    .encoding_scheme(encoding_scheme)
+                    .target_address(vec![0, 0, 0, 0, 0, 0, 0, 0])
+                    .finalize();
+            let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
+            let mut responses = Vec::new();
+            {
                 let &mut (_path, ref mut inner_conn) = self.inner.e2e_conns.get_mut(&handle).unwrap();
-                let data_packet = DataPacket::new(1, &DataPayload::RoutePacket(route_message));
-                for packet_content in inner_conn.wrap_message_immediately(&data_packet.raw) {
-                    let packet = SwitchPacket::new(&label, SwitchPayload::CryptoAuthData(handle, packet_content));
-                    packets.push(packet);
+                println!("Sending data packet: {}", getpeers_message);
+                for packet_response in inner_conn.wrap_message_immediately(&getpeers_message.raw) {
+                    responses.push(make_reply(reply_to, packet_response, inner_conn));
                 }
             }
-            for packet in packets {
-                self.dispatch(packet, 0b001);
+            for response in responses {
+                self.dispatch(response, 0b001);
             }
         }
     }
@@ -104,7 +113,7 @@ impl UdpSwitch {
             }
         }
 
-        self.random_send_getpeers()
+        self.random_send_getpeers(switch_packet, handle)
     }
 
     /// Called when a switch packet is sent to the self interface
