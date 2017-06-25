@@ -12,7 +12,8 @@ use session_manager::SessionHandle;
 #[derive(Debug)]
 pub enum Payload {
     Control(ControlPacket),
-    CryptoAuthHandshake(Vec<u8>),
+    CryptoAuthHello(Vec<u8>),
+    CryptoAuthKey(Vec<u8>),
     CryptoAuthData(SessionHandle, Vec<u8>),
 }
 
@@ -33,7 +34,7 @@ impl SwitchPacket {
                 raw.append(&mut vec![0xff, 0xff, 0xff, 0xff]);
                 raw.append(&mut msg.encode());
             },
-            Payload::CryptoAuthHandshake(mut msg) => {
+            Payload::CryptoAuthHello(mut msg) | Payload::CryptoAuthKey(mut msg) => {
                 let session_state = BigEndian::read_u32(&msg[0..4]);
                 assert!(session_state < 4);
                 assert!(session_state != 0xffffffff);
@@ -90,7 +91,8 @@ impl SwitchPacket {
     pub fn payload(&self) -> Option<Payload> {
         match BigEndian::read_u32(&self.raw[12..16]) {
             0xffffffff => ControlPacket::decode(&self.raw[16..].to_vec()).map(Payload::Control),
-            0 | 1 | 2 | 3 => Some(Payload::CryptoAuthHandshake(self.raw[12..].to_vec())),
+            0 | 1 => Some(Payload::CryptoAuthHello(self.raw[12..].to_vec())),
+            2 | 3 => Some(Payload::CryptoAuthKey(self.raw[12..].to_vec())),
             handle => Some(Payload::CryptoAuthData(SessionHandle(handle), self.raw[16..].to_vec())),
         }
     }

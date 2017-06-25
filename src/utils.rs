@@ -12,21 +12,27 @@ use session_manager::SessionHandle;
 /// `wrap_messages`).
 pub fn new_from_raw_content(path: ForwardPath, content: Vec<u8>, handle: Option<SessionHandle>) -> SwitchPacket {
     let first_four_bytes = BigEndian::read_u32(&content[0..4]);
-    if first_four_bytes < 4 {
-        // If it is a CryptoAuth handshake packet, send it as is.
-        SwitchPacket::new(path, SwitchPayload::CryptoAuthHandshake(content))
-    }
-    else if first_four_bytes == 0xffffffff {
-        // Control packet
-        unimplemented!()
-    }
-    else {
-        // Otherwise, it is a CryptoAuth data packet. We have to prepend
-        // the session handle to the reply.
-        // This handle is used by the peer to know this packet is coming
-        // from us.
-        let peer_handle = handle.unwrap();
-        SwitchPacket::new(path, SwitchPayload::CryptoAuthData(peer_handle, content))
+    match first_four_bytes {
+        0 | 1 => {
+            // If it is a CryptoAuth handshake Hello packet, send it as is.
+            SwitchPacket::new(path, SwitchPayload::CryptoAuthHello(content))
+        },
+        2 | 3 => {
+            // If it is a CryptoAuth handshake Key packet, send it as is.
+            SwitchPacket::new(path, SwitchPayload::CryptoAuthKey(content))
+        },
+        0xffffffff => {
+            // Control packet
+            unimplemented!()
+        },
+        _ => {
+            // Otherwise, it is a CryptoAuth data packet. We have to prepend
+            // the session handle to the reply.
+            // This handle is used by the peer to know this packet is coming
+            // from us.
+            let peer_handle = handle.unwrap();
+            SwitchPacket::new(path, SwitchPayload::CryptoAuthData(peer_handle, content))
+        },
     }
 }
 

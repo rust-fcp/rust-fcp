@@ -9,11 +9,11 @@ use byteorder::BigEndian;
 pub type Label = [u8; 8];
 
 /// A label for a switch packet sent to me
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct BackwardPath(pub Label);
 
 /// A label for a switch packet sent by me
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ForwardPath(pub Label);
 
 impl From<Label> for BackwardPath {
@@ -33,6 +33,13 @@ impl From<ForwardPath> for Label {
     #[inline(always)]
     fn from(path: ForwardPath) -> Label {
         path.0
+    }
+}
+impl ForwardPath {
+    #[inline(always)]
+    pub fn reverse(mut self) -> BackwardPath {
+        reverse_label(&mut self.0);
+        BackwardPath(self.0)
     }
 }
 

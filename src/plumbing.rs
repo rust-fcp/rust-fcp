@@ -60,13 +60,17 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 self.on_control_packet(control_packet, switch_packet.label().into());
                 None
             },
-            Some(SwitchPayload::CryptoAuthHandshake(handshake)) => {
-                // If it is a CryptoAuth handshake packet (ie. if someone is
+            Some(SwitchPayload::CryptoAuthHello(handshake)) => {
+                // If it is a CryptoAuth handshake Hello packet (ie. if someone is
                 // connecting to us), create a new session for this node.
-                // All CA handshake we receive will be sessions started by
-                // other peers, because this switch never starts sessions
-                // (routers do, not switches).
-                let (handle, inner_packet) = self.session_manager.on_handshake(handshake, switch_packet);
+                let (handle, inner_packet) = self.session_manager.on_hello(handshake, switch_packet);
+                Some((handle, vec![DataPacket { raw: inner_packet }]))
+            },
+            Some(SwitchPayload::CryptoAuthKey(handshake)) => {
+                // If it is a CryptoAuth handshake Key packet (ie. if someone is
+                // replies to our connection attempt), find its session and
+                // update it.
+                let (handle, inner_packet) = self.session_manager.on_key(handshake, switch_packet).unwrap();
                 Some((handle, vec![DataPacket { raw: inner_packet }]))
             },
             Some(SwitchPayload::CryptoAuthData(handle, ca_message)) => {

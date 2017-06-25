@@ -24,9 +24,20 @@ pub struct SessionManager {
     /// themselves are wrapped in SwitchPackets, which are wrapped in the
     /// outer CryptoAuth sessions.
     pub sessions: HashMap<SessionHandle, Session>,
+
+    pub path_to_handle: HashMap<BackwardPath, SessionHandle>,
 }
 
 impl SessionManager {
+    pub fn new(my_pk: PublicKey, my_sk: SecretKey) -> SessionManager {
+        SessionManager {
+            my_pk: my_pk,
+            my_sk: my_sk,
+            sessions: HashMap::new(),
+            path_to_handle: HashMap::new(),
+        }
+    }
+
     fn gen_handle(&mut self) -> SessionHandle {
         loop {
             let handle = SessionHandle(rand::thread_rng().next_u32());
@@ -42,17 +53,29 @@ impl SessionManager {
                 credentials, None,
                 (), None);
         let handle = self.gen_handle();
+        self.path_to_handle.insert(path.clone().reverse(), handle);
         self.sessions.insert(handle, Session { path: path, conn: conn });
         handle
     }
 
-    pub fn on_handshake(&mut self, packet: Vec<u8>, switch_packet: &SwitchPacket) -> (SessionHandle, Vec<u8>)  {
-        // TODO: handle Key packets
+    pub fn on_hello(&mut self, packet: Vec<u8>, switch_packet: &SwitchPacket) -> (SessionHandle, Vec<u8>) {
         let handle = self.gen_handle();
         let (conn, message) = CAWrapper::new_incoming_connection(self.my_pk, self.my_sk.clone(), Credentials::None, None, Some(handle.0), packet).unwrap();
         let path = BackwardPath::from(switch_packet.label()).reverse();
         self.sessions.insert(handle, Session { path: path, conn: conn });
         (handle, message)
+    }
+
+    pub fn on_key(&mut self, packet: Vec<u8>, switch_packet: &SwitchPacket) -> Option<(SessionHandle, Vec<u8>)> {
+        // TODO: use pk instead of path to find the session.
+        self.path_to_handle.get(&BackwardPath::from(switch_packet.label()))
+            .cloned()
+            .map(|handle| {
+            let (conn, message) = CAWrapper::new_incoming_connection(self.my_pk, self.my_sk.clone(), Credentials::None, None, Some(handle.0), packet).unwrap();
+            let path = BackwardPath::from(switch_packet.label()).reverse();
+            self.sessions.insert(handle, Session { path: path, conn: conn });
+            (handle, message)
+        })
     }
 
 
@@ -75,4 +98,9 @@ impl SessionManager {
         }
         packets
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 }

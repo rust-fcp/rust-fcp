@@ -37,11 +37,7 @@ impl UdpSwitch {
     /// Instanciates a switch.
     fn new(sock: UdpSocket, peers: HashMap<Director, UdpPeer<String>>, my_pk: PublicKey, my_sk: SecretKey, allowed_peers: HashMap<Credentials, String>) -> UdpSwitch {
         let udp_adapter = UdpAdapter::new(sock, my_pk.clone(), my_sk.clone(), allowed_peers.clone(), peers);
-        let session_manager = SessionManager {
-            my_pk: my_pk.clone(),
-            my_sk: my_sk.clone(),
-            sessions: HashMap::new(),
-        };
+        let session_manager = SessionManager::new(my_pk.clone(), my_sk.clone());
         let plumbing = Plumbing {
             network_adapter: udp_adapter,
             switch: PassiveSwitch::new(my_pk, my_sk, allowed_peers),
