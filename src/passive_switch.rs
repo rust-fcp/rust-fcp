@@ -31,7 +31,7 @@ impl PassiveSwitch {
 
     /// Takes a 3-bit interface id, and reverse its bits.
     /// Used to compute reverse paths.
-    fn reverse_iface_id(&self, iface_id: u64) -> u64 {
+    fn reverse_iface_id(&self, iface_id: Director) -> Director {
         match iface_id {
             0b000 => 0b000,
             0b001 => 0b100,
@@ -54,7 +54,7 @@ impl PassiveSwitch {
     pub fn forward(&self, mut packet: SwitchPacket, from_interface: Director)
             -> (Option<SwitchPacket>, Option<(Director, SwitchPacket)>) {
         // Logically advance the packet through an interface.
-        let routing_decision = packet.switch(3, &(self.reverse_iface_id(from_interface) as u64));
+        let routing_decision = packet.switch(3, &(self.reverse_iface_id(from_interface) as Director));
         match routing_decision {
             RoutingDecision::SelfInterface(_) => {
                 // Packet is sent to myself

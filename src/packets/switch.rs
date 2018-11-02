@@ -5,7 +5,7 @@
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 
-use operation::{switch, reverse_label, Director, RoutingDecision, Label, ForwardPath, BackwardPath};
+use operation::{switch, reverse_label, Director, RoutingDecision, Label, ForwardPath, BackwardPath, LABEL_LENGTH};
 use packets::control::ControlPacket;
 use session_manager::SessionHandle;
 
@@ -26,9 +26,38 @@ pub struct SwitchPacket {
 
 impl SwitchPacket {
     /// Returns a new packet, constructed from its route and its payload.
+    #[cfg(not(feature="sfcp"))]
     pub fn new(path: ForwardPath, payload: Payload) -> SwitchPacket {
         let mut raw = vec![0u8; 12];
         raw[0..8].copy_from_slice(&Label::from(path));
+        match payload {
+            Payload::Control(msg) => {
+                raw.append(&mut vec![0xff, 0xff, 0xff, 0xff]);
+                raw.append(&mut msg.encode());
+            },
+            Payload::CryptoAuthHello(mut msg) | Payload::CryptoAuthKey(mut msg) => {
+                let session_state = BigEndian::read_u32(&msg[0..4]);
+                assert!(session_state < 4);
+                assert!(session_state != 0xffffffff);
+                raw.append(&mut msg);
+            },
+            Payload::CryptoAuthData(session_handle, mut msg) => {
+                assert!(session_handle.0 >= 4);
+                assert!(session_handle.0 != 0xffffffff);
+                let mut raw_handle = vec![0u8; 4];
+                BigEndian::write_u32(&mut raw_handle, session_handle.0);
+                raw.append(&mut raw_handle);
+                raw.append(&mut msg);
+            },
+        }
+        SwitchPacket { raw: raw }
+    }
+
+    /// Returns a new packet, constructed from its route and its payload.
+    #[cfg(feature="sfcp")]
+    pub fn new(path: ForwardPath, payload: Payload) -> SwitchPacket {
+        let mut raw = vec![0u8; 16];
+        raw[0..15].copy_from_slice(&Label::from(path));
         match payload {
             Payload::Control(msg) => {
                 raw.append(&mut vec![0xff, 0xff, 0xff, 0xff]);
@@ -60,8 +89,8 @@ impl SwitchPacket {
 
     /// Returns the address label of the packet.
     pub fn label(&self) -> Label {
-        let mut label = [0u8; 8];
-        label.copy_from_slice(&self.raw[0..8]);
+        let mut label = [0u8; LABEL_LENGTH];
+        label.copy_from_slice(&self.raw[0..LABEL_LENGTH]);
         label
     }
 
@@ -107,16 +136,16 @@ impl SwitchPacket {
     /// See the doc of `fcp::operation::switch` for more details.
     pub fn switch(&mut self, director_length: u8, reversed_origin_iface: &Director) -> RoutingDecision {
         let (new_label, decision) = switch(&self.label(), director_length, reversed_origin_iface);
-        self.raw[0..8].copy_from_slice(&new_label);
+        self.raw[0..LABEL_LENGTH].copy_from_slice(&new_label);
         decision
     }
 
     /// Inverses the path and the return path.
     pub fn reverse_label(&mut self) {
         // TODO: do this in-place/no-copy.
-        let mut label = [0u8; 8];
+        let mut label = [0u8; LABEL_LENGTH];
         reverse_label(&mut label);
-        self.raw[0..8].copy_from_slice(&label);
+        self.raw[0..LABEL_LENGTH].copy_from_slice(&label);
     }
 
 }

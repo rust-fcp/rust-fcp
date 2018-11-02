@@ -3,7 +3,9 @@ rust:
     - stable
     - beta
     - nightly
-matrix:
-    allow_failures:
-        - rust: nightly
-
+script:
+    - cargo test --no-default-features --features "$FEATURES"
+env:
+    matrix:
+        - FEATURES="sfcp"
+        - FEATURES=""

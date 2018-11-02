@@ -5,8 +5,22 @@ extern crate byteorder;
 use byteorder::ByteOrder;
 use byteorder::BigEndian;
 
+#[cfg(not(feature="sfcp"))]
+pub const LABEL_LENGTH: usize = 8;
+
+#[cfg(feature="sfcp")]
+pub const LABEL_LENGTH: usize = 16;
+
 /// An encoding of a path in the network
-pub type Label = [u8; 8];
+pub type Label = [u8; LABEL_LENGTH];
+
+/// An interface identifier, unique to a node.
+#[cfg(not(feature="sfcp"))]
+pub type Director = u64;
+
+/// An interface identifier, unique to a node.
+#[cfg(feature="sfcp")]
+pub type Director = u128;
 
 /// A label for a switch packet sent to me
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -37,15 +51,18 @@ impl From<ForwardPath> for Label {
 }
 impl ForwardPath {
     #[inline(always)]
+    pub fn self_interface() -> ForwardPath {
+        let mut label = [0u8; LABEL_LENGTH];
+        label[LABEL_LENGTH-1] = 0b001;
+        ForwardPath(label)
+    }
+
+    #[inline(always)]
     pub fn reverse(mut self) -> BackwardPath {
         reverse_label(&mut self.0);
         BackwardPath(self.0)
     }
 }
-
-
-/// An interface identifier, unique to a node.
-pub type Director = u64;
 
 /// Representation of where the packet should be sent, according to the label.
 #[derive(Eq)]
@@ -65,9 +82,22 @@ pub enum RoutingDecision {
 /// Shift bits to the right, collects the discarded bits, and puts these
 /// bits at the left.
 /// Returns (the computed new number, collected bits)
+#[cfg(not(feature="sfcp"))]
 fn right_shift_collect(bits: u64, shift: u8) -> (u64, u64) {
     assert!(shift < 64);
     let mask = (0b1u64 << shift) - 1;
+    let collected_bits = bits & mask;
+    let new_bits = bits >> shift;
+    (new_bits, collected_bits)
+}
+
+/// Shift bits to the right, collects the discarded bits, and puts these
+/// bits at the left.
+/// Returns (the computed new number, collected bits)
+#[cfg(feature="sfcp")]
+fn right_shift_collect(bits: u128, shift: u8) -> (u128, u128) {
+    assert!(shift < 128);
+    let mask = (0b1u128 << shift) - 1;
     let collected_bits = bits & mask;
     let new_bits = bits >> shift;
     (new_bits, collected_bits)
@@ -95,7 +125,7 @@ fn test_right_shift_collect() {
 }
 
 pub fn label_from_u64(u: u64) -> Label {
-    let mut label = [0u8; 8];
+    let mut label = [0u8; LABEL_LENGTH];
     BigEndian::write_u64(&mut label, u);
     label
 }
@@ -150,6 +180,11 @@ pub fn u64_from_label(label: Label) -> u64 {
 /// assert_eq!(0b100110_010101_110110011_11001_1000000_0000000000000000000000000000000, u64_from_label(label));
 /// ```
 pub fn switch(label: &Label, director_length: u8, reversed_origin_iface: &Director) -> (Label, RoutingDecision) {
+    _switch(label, director_length, reversed_origin_iface)
+}
+
+#[cfg(not(feature="sfcp"))]
+pub fn _switch(label: &Label, director_length: u8, reversed_origin_iface: &Director) -> (Label, RoutingDecision) {
     let label = BigEndian::read_u64(label);
     let (mut new_label, director) = right_shift_collect(label, director_length);
     assert!(reversed_origin_iface < &(0b1u64 << director_length));
@@ -157,6 +192,26 @@ pub fn switch(label: &Label, director_length: u8, reversed_origin_iface: &Direct
 
     let mut new_label_arr = [0u8; 8];
     BigEndian::write_u64(&mut new_label_arr, new_label);
+
+    if director & 0b1111 == 0b0001 {
+        // If it is a self-interface director, as defined by
+        // https://github.com/cjdelisle/cjdns/blob/cjdns-v17.4/doc/Whitepaper.md#self-interface-director
+        (new_label_arr, RoutingDecision::SelfInterface(director))
+    }
+    else {
+        (new_label_arr, RoutingDecision::Forward(director))
+    }
+}
+
+#[cfg(feature="sfcp")]
+pub fn _switch(label: &Label, director_length: u8, reversed_origin_iface: &Director) -> (Label, RoutingDecision) {
+    let label = BigEndian::read_u128(label);
+    let (mut new_label, director) = right_shift_collect(label, director_length);
+    assert!(reversed_origin_iface < &(0b1u128 << director_length));
+    new_label += reversed_origin_iface << (128 - director_length);
+
+    let mut new_label_arr = [0u8; 16];
+    BigEndian::write_u128(&mut new_label_arr, new_label);
 
     if director & 0b1111 == 0b0001 {
         // If it is a self-interface director, as defined by

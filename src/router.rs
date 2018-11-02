@@ -71,7 +71,7 @@ impl Router {
             my_pk.copy_from_slice(&self.my_pk.0);
             nodes.push(NodeData {
                 public_key: my_pk,
-                path: [0, 0, 0, 0, 0, 0, 0, 0b001],
+                path: ForwardPath::self_interface().0,
                 version: 18,
             });
         }

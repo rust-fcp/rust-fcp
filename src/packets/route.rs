@@ -11,10 +11,10 @@ use simple_bencode::Value as BValue;
 use simple_bencode::decoding_helpers::HelperDecodeError;
 
 use encoding_scheme::EncodingScheme;
-use operation::Label;
+use operation::{Label, LABEL_LENGTH};
 
 const PUBLIC_KEY_LENGTH: usize = 32;
-const PATH_LENGTH: usize = 8;
+const PATH_LENGTH: usize = LABEL_LENGTH;
 
 /// Represents a cjdns node, with its public key, path through the network,
 /// and protocol version.
@@ -174,7 +174,7 @@ impl RoutePacket {
             let mut public_key = [0u8; PUBLIC_KEY_LENGTH];
             public_key.copy_from_slice(&nodes[node_start..node_start+PUBLIC_KEY_LENGTH]);
 
-            let mut path = [0u8; 8];
+            let mut path = [0u8; LABEL_LENGTH];
             path.copy_from_slice(&nodes[node_start+PUBLIC_KEY_LENGTH..node_start+PUBLIC_KEY_LENGTH+PATH_LENGTH]);
 
             let mut version = 0u64;
