@@ -104,6 +104,7 @@ fn right_shift_collect(bits: u128, shift: u8) -> (u128, u128) {
 }
 
 #[test]
+#[cfg(not(feature="sfcp"))]
 fn test_right_shift_collect() {
     let bits: u64 = 0b0000000000000000000000000_0001_101011_011010_100101101_10111_0100011;
     let (bits, collected) = right_shift_collect(bits, 7);
@@ -124,14 +125,28 @@ fn test_right_shift_collect() {
     assert_eq!(0b1, bits);
 }
 
+#[cfg(not(feature="sfcp"))]
 pub fn label_from_u64(u: u64) -> Label {
     let mut label = [0u8; LABEL_LENGTH];
     BigEndian::write_u64(&mut label, u);
     label
 }
 
+#[cfg(feature="sfcp")]
+pub fn label_from_u128(u: u128) -> Label {
+    let mut label = [0u8; LABEL_LENGTH];
+    BigEndian::write_u128(&mut label, u);
+    label
+}
+
+#[cfg(not(feature="sfcp"))]
 pub fn u64_from_label(label: Label) -> u64 {
     BigEndian::read_u64(&label)
+}
+
+#[cfg(feature="sfcp")]
+pub fn u128_from_label(label: Label) -> u128 {
+    BigEndian::read_u128(&label)
 }
 
 /// Performs a switch operation on the label (using constant director length),
@@ -171,7 +186,7 @@ pub fn u64_from_label(label: Label) -> u64 {
 /// ```
 ///
 /// Supports non-canonical self-interfaces:
-/// 
+///
 /// ```
 /// # use fcp::operation::*;
 /// let label: Label = label_from_u64(0b010101_110110011_11001_1000000_0000000000000000000000000000000_110001);
@@ -179,12 +194,8 @@ pub fn u64_from_label(label: Label) -> u64 {
 /// assert_eq!(RoutingDecision::SelfInterface(0b110001), decision);
 /// assert_eq!(0b100110_010101_110110011_11001_1000000_0000000000000000000000000000000, u64_from_label(label));
 /// ```
-pub fn switch(label: &Label, director_length: u8, reversed_origin_iface: &Director) -> (Label, RoutingDecision) {
-    _switch(label, director_length, reversed_origin_iface)
-}
-
 #[cfg(not(feature="sfcp"))]
-pub fn _switch(label: &Label, director_length: u8, reversed_origin_iface: &Director) -> (Label, RoutingDecision) {
+pub fn switch(label: &Label, director_length: u8, reversed_origin_iface: &Director) -> (Label, RoutingDecision) {
     let label = BigEndian::read_u64(label);
     let (mut new_label, director) = right_shift_collect(label, director_length);
     assert!(reversed_origin_iface < &(0b1u64 << director_length));
@@ -203,8 +214,53 @@ pub fn _switch(label: &Label, director_length: u8, reversed_origin_iface: &Direc
     }
 }
 
+/// Performs a switch operation on the label (using constant director length),
+/// as defined by
+/// https://github.com/cjdelisle/cjdns/blob/cjdns-v17.4/doc/Whitepaper.md#operation :
+/// extracts the director and shifts the other bits to the right, and put
+/// the reversed origin interface at the left of the label
+///
+/// # Examples
+///
+/// Canonical case, inspired from
+/// https://github.com/cjdelisle/cjdns/blob/cjdns-v17.4/doc/Whitepaper.md#example :
+///
+/// ```
+/// # use fcp::operation::*;
+/// let mut label: Label = label_from_u128(0b0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000_0001_011010_100101101_10111_0100011);
+///
+/// let (label, decision) = switch(&label, 7, &0b1000000);
+/// assert_eq!(RoutingDecision::Forward(0b0100011), decision);
+/// assert_eq!(0b1000000_0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000_0001_011010_100101101_10111, u128_from_label(label));
+///
+/// let (label, decision) = switch(&label, 5, &0b11001);
+/// assert_eq!(RoutingDecision::Forward(0b10111), decision);
+/// assert_eq!(0b11001_1000000_0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000_0001_011010_100101101, u128_from_label(label));
+///
+/// let (label, decision) = switch(&label, 9, &0b110110011);
+/// assert_eq!(RoutingDecision::Forward(0b100101101), decision);
+/// assert_eq!(0b110110011_11001_1000000_0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000_0001_011010, u128_from_label(label));
+///
+/// let (label, decision) = switch(&label, 6, &0b010101);
+/// assert_eq!(RoutingDecision::Forward(0b011010), decision);
+/// assert_eq!(0b010101_110110011_11001_1000000_0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000_0001, u128_from_label(label));
+///
+/// let (label, decision) = switch(&label, 4, &0b0110);
+/// assert_eq!(RoutingDecision::SelfInterface(0b0001), decision);
+/// assert_eq!(0b0110_010101_110110011_11001_1000000_0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, u128_from_label(label));
+/// ```
+///
+/// Supports non-canonical self-interfaces:
+///
+/// ```
+/// # use fcp::operation::*;
+/// let label: Label = label_from_u128(0b010101_110110011_11001_1000000_00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000_110001);
+/// let (label, decision) = switch(&label, 6, &0b100110);
+/// assert_eq!(RoutingDecision::SelfInterface(0b110001), decision);
+/// assert_eq!(0b100110_010101_110110011_11001_1000000_00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, u128_from_label(label));
+/// ```
 #[cfg(feature="sfcp")]
-pub fn _switch(label: &Label, director_length: u8, reversed_origin_iface: &Director) -> (Label, RoutingDecision) {
+pub fn switch(label: &Label, director_length: u8, reversed_origin_iface: &Director) -> (Label, RoutingDecision) {
     let label = BigEndian::read_u128(label);
     let (mut new_label, director) = right_shift_collect(label, director_length);
     assert!(reversed_origin_iface < &(0b1u128 << director_length));
@@ -266,11 +322,23 @@ const BYTE_REVERSE_TABLE: [u8; 256] = [
 ///
 /// ```
 /// # use fcp::operation::*;
-/// let mut label: Label = label_from_u64(0b110110011_11001_1000000_000000000000000000000000000_0001_101011_011010);
-/// println!("{:b}", u64_from_label(label));
-/// reverse_label(&mut label);
-/// println!("{:b}", u64_from_label(label));
-/// assert_eq!(0b010110_110101_1000_000000000000000000000000000_0000001_10011_110011011, u64_from_label(label));
+/// #[cfg(not(feature="sfcp"))]
+/// {
+///     let mut label: Label = label_from_u64(0b110110011_11001_1000000_000000000000000000000000000_0001_101011_011010);
+///     println!("{:b}", u64_from_label(label));
+///     reverse_label(&mut label);
+///     println!("{:b}", u64_from_label(label));
+///     assert_eq!(0b010110_110101_1000_000000000000000000000000000_0000001_10011_110011011, u64_from_label(label));
+/// }
+///
+/// #[cfg(feature="sfcp")]
+/// {
+///     let mut label: Label = label_from_u128(0b110110011_11001_1000000_0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000_0001_101011_011010);
+///     println!("{:b}", u128_from_label(label));
+///     reverse_label(&mut label);
+///     println!("{:b}", u128_from_label(label));
+///     assert_eq!(0b010110_110101_1000_0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000_0000001_10011_110011011, u128_from_label(label));
+/// }
 /// ```
 pub fn reverse_label(label: &mut Label) {
     /* TODO: compare performance with non-inplace version:
@@ -280,9 +348,9 @@ pub fn reverse_label(label: &mut Label) {
     }
     label.copy_from_slice(&new_label);
     */
-    for i in 0..4 {
-        let tmp = BYTE_REVERSE_TABLE[label[7-i] as usize];
-        label[7-i] = BYTE_REVERSE_TABLE[label[i] as usize];
+    for i in 0..(LABEL_LENGTH/2) {
+        let tmp = BYTE_REVERSE_TABLE[label[LABEL_LENGTH-1-i] as usize];
+        label[LABEL_LENGTH-1-i] = BYTE_REVERSE_TABLE[label[i] as usize];
         label[i] = tmp;
     }
 }

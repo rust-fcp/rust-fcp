@@ -70,6 +70,7 @@ mod tests {
     use operation::ForwardPath;
 
     #[test]
+    #[cfg(not(feature="sfcp"))]
     fn test_get_one_node() {
         let mut ns = NodeStore::new(Address::from(Ipv6Addr::from_str("fc8f:a188:1b5:4de9:b0cb:5729:23a1:60f9").unwrap()));
         let addr = Address::from(Ipv6Addr::from_str("fc7c:8316:ec7d:1308:d3c2:6db7:5ad9:6ebc").unwrap());

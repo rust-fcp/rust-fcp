@@ -158,6 +158,7 @@ mod test {
     use super::super::super::packets::control::ControlPacket;
 
     #[test]
+    #[cfg(not(feature="sfcp"))]
     fn switch_and_reply() {
         let mut received = SwitchPacket { raw: Vec::from_hex("800000000000000100440000ffffffff9986000309f9110200000011467c6febbde26264a38cd12e").unwrap() };
         let decision = received.switch(4, &0b1100);
