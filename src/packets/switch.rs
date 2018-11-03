@@ -56,8 +56,8 @@ impl SwitchPacket {
     /// Returns a new packet, constructed from its route and its payload.
     #[cfg(feature="sfcp")]
     pub fn new(path: ForwardPath, payload: Payload) -> SwitchPacket {
-        let mut raw = vec![0u8; 16];
-        raw[0..15].copy_from_slice(&Label::from(path));
+        let mut raw = vec![0u8; 20];
+        raw[0..16].copy_from_slice(&Label::from(path));
         match payload {
             Payload::Control(msg) => {
                 raw.append(&mut vec![0xff, 0xff, 0xff, 0xff]);
@@ -94,22 +94,27 @@ impl SwitchPacket {
         label
     }
 
+    #[cfg(not(feature="sfcp"))]
     pub fn congest(&self) -> u8 {
         self.raw[8] >> 1
     }
 
+    #[cfg(not(feature="sfcp"))]
     pub fn suppress_errors(&self) -> bool {
         self.raw[8] & 0b00000001 == 1
     }
 
+    #[cfg(not(feature="sfcp"))]
     pub fn version(&self) -> u8 {
         self.raw[9] >> 6
     }
 
+    #[cfg(not(feature="sfcp"))]
     pub fn label_shift(&self) -> u8 {
         self.raw[9] & 0b00111111
     }
 
+    #[cfg(not(feature="sfcp"))]
     pub fn penalty(&self) -> [u8; 2] {
         let mut a = [0u8; 2];
         a.copy_from_slice(&self.raw[10..12]);
@@ -117,12 +122,24 @@ impl SwitchPacket {
     }
 
     /// Returns a reference to the content of the packet.
+    #[cfg(not(feature="sfcp"))]
     pub fn payload(&self) -> Option<Payload> {
         match BigEndian::read_u32(&self.raw[12..16]) {
             0xffffffff => ControlPacket::decode(&self.raw[16..].to_vec()).map(Payload::Control),
             0 | 1 => Some(Payload::CryptoAuthHello(self.raw[12..].to_vec())),
             2 | 3 => Some(Payload::CryptoAuthKey(self.raw[12..].to_vec())),
             handle => Some(Payload::CryptoAuthData(SessionHandle(handle), self.raw[16..].to_vec())),
+        }
+    }
+
+    /// Returns a reference to the content of the packet.
+    #[cfg(feature="sfcp")]
+    pub fn payload(&self) -> Option<Payload> {
+        match BigEndian::read_u32(&self.raw[20..24]) {
+            0xffffffff => ControlPacket::decode(&self.raw[24..].to_vec()).map(Payload::Control),
+            0 | 1 => Some(Payload::CryptoAuthHello(self.raw[20..].to_vec())),
+            2 | 3 => Some(Payload::CryptoAuthKey(self.raw[20..].to_vec())),
+            handle => Some(Payload::CryptoAuthData(SessionHandle(handle), self.raw[20..].to_vec())),
         }
     }
 

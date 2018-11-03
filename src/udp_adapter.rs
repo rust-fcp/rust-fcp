@@ -50,7 +50,10 @@ impl<PeerId: Clone> UdpAdapter<PeerId> {
         }
 
         // Not a known interface; create one
-        let director = (0..0b1000).filter(|candidate| !self.peers.contains_key(&candidate)).next().unwrap();
+        let director = (0..0b1000).filter(|candidate|
+            candidate & 0b1111 != 0b0001 && // Check it is not an alias to the self-interface
+            !self.peers.contains_key(&candidate)
+        ).next().unwrap();
         let (ca_session, message) = CAWrapper::new_incoming_connection(self.my_pk.clone(), self.my_sk.clone(), Credentials::None, Some(self.allowed_peers.clone()), None, datagram).unwrap();
         let peer = UdpPeer { ca_session: ca_session, addr: from_addr };
         self.peers.insert(director, peer);

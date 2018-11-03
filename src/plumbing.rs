@@ -124,4 +124,15 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 (handle, packets)
             })
     }
+
+    pub fn upkeep(&mut self) -> Vec<(SessionHandle, Vec<DataPacket>)> {
+        let (director, messages) = self.network_adapter.recv_from();
+        let mut to_self = Vec::new();
+        for message in messages.into_iter() {
+            if let Some(pkts) = self.dispatch(message, director) {
+                to_self.push(pkts);
+            }
+        }
+        to_self
+    }
 }
