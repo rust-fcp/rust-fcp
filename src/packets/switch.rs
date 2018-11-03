@@ -104,6 +104,11 @@ impl SwitchPacket {
         self.raw[8] & 0b00000001 == 1
     }
 
+    #[cfg(feature="sfcp")]
+    pub fn suppress_errors(&self) -> bool {
+        self.raw[17] & 0b10000000 == 1
+    }
+
     #[cfg(not(feature="sfcp"))]
     pub fn version(&self) -> u8 {
         self.raw[9] >> 6
@@ -112,6 +117,11 @@ impl SwitchPacket {
     #[cfg(not(feature="sfcp"))]
     pub fn label_shift(&self) -> u8 {
         self.raw[9] & 0b00111111
+    }
+
+    #[cfg(feature="sfcp")]
+    pub fn label_shift(&self) -> u8 {
+        self.raw[17] & 0b01111111
     }
 
     #[cfg(not(feature="sfcp"))]
