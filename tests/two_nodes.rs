@@ -115,11 +115,8 @@ fn switchctrl_ping_peer() {
     #[cfg(feature="sfcp")]
     let path = ForwardPath(label_from_u128(0b001_010));
 
-    let handle_1to2 = node1.session_manager.add_outgoing(path, pk2, Credentials::None);
-
     let ctrl_pkt = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
     let switch_pkt = SwitchPacket::new(path, SwitchPayload::Control(ctrl_pkt));
-    println!("{:?}", switch_pkt);
     let to_self1 = node1.dispatch(switch_pkt, 0b001);
     assert!(to_self1.is_none());
 
