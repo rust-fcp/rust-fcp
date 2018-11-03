@@ -106,7 +106,7 @@ impl SwitchPacket {
 
     #[cfg(feature="sfcp")]
     pub fn suppress_errors(&self) -> bool {
-        self.raw[17] & 0b10000000 == 1
+        self.raw[17] & 0b10000000 != 0
     }
 
     #[cfg(not(feature="sfcp"))]

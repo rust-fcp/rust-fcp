@@ -23,7 +23,6 @@ use fcp::operation::label_from_u64;
 #[cfg(feature="sfcp")]
 use fcp::operation::label_from_u128;
 
-#[derive(Default)]
 struct MockNetworkAdapter {
     out_queues: HashMap<Director, Rc<RefCell<VecDeque<SwitchPacket>>>>,
     in_queues: HashMap<Director, Rc<RefCell<VecDeque<SwitchPacket>>>>,
