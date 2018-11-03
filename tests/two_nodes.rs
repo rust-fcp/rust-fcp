@@ -82,6 +82,7 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing) {
         },
         switch: PassiveSwitch::new(pk1.clone(), sk1.clone(), allowed_peers),
         session_manager: session_manager1,
+        pongs: Some(VecDeque::new()),
     };
 
     let session_manager2 = SessionManager::new(pk2.clone(), sk2.clone());
@@ -93,6 +94,7 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing) {
         },
         switch: PassiveSwitch::new(pk2.clone(), sk2.clone(), HashMap::new()),
         session_manager: session_manager2,
+        pongs: Some(VecDeque::new()),
     };
 
     (pk1, node1, pk2, node2)
@@ -122,5 +124,14 @@ fn switchctrl_ping_peer() {
     assert!(to_self1.is_none());
 
     let to_self2 = node2.upkeep();
-    //assert_eq!(to_self2.len(), 1);
+    assert_eq!(to_self2.len(), 0);
+
+    assert_eq!(node1.pongs.as_ref().unwrap().len(), 0);
+    assert_eq!(node2.pongs.as_ref().unwrap().len(), 0);
+
+    let to_self1 = node1.upkeep();
+    assert_eq!(to_self1.len(), 0);
+
+    assert_eq!(node1.pongs.as_ref().unwrap().len(), 1);
+    assert_eq!(node2.pongs.as_ref().unwrap().len(), 0);
 }

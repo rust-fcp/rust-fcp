@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use fcp_cryptoauth::PublicKey;
 
 use passive_switch::PassiveSwitch;
@@ -28,6 +30,9 @@ pub struct Plumbing<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> {
     pub network_adapter: NetworkAdapter,
     pub switch: PassiveSwitch,
     pub session_manager: SessionManager,
+    /// If not `None`, holds a list of the opaque data received in Pong
+    /// packets. Use only when debugging, as it is a DoS vulnerability.
+    pub pongs: Option<VecDeque<Vec<u8>>>,
 }
 
 impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, NetworkAdapter> {
@@ -40,13 +45,10 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 self.dispatch(packet_response, 0b001);
 
             },
-            ControlPacket::Pong { .. } => {
-                // If it is a pong packet, print it.
-
-                // TODO
-
-                //assert_eq!(opaque_data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
-                //println!("Received pong (label: {}).", switch_packet.label().to_vec().to_hex());
+            ControlPacket::Pong { opaque_data, .. } => {
+                if let Some(ref mut pongs) = self.pongs {
+                    pongs.push_back(opaque_data);
+                }
             },
             _ => panic!("Can only handle Pings and Pongs."),
         }

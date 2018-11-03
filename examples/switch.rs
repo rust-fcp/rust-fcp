@@ -43,6 +43,7 @@ impl UdpSwitch {
             switch: PassiveSwitch::new(my_pk, my_sk, allowed_peers),
             router: Router::new(my_pk),
             session_manager: session_manager,
+            pongs: None,
         };
         UdpSwitch {
             plumbing: plumbing,
