@@ -16,6 +16,7 @@ pub mod udp_adapter;
 pub mod utils;
 pub mod plumbing;
 pub mod session_manager;
+pub mod mocks;
 
 #[cfg(test)]
 mod tests {
