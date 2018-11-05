@@ -47,20 +47,29 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing, PublicKey
     let queue_3to2 = Rc::new(RefCell::new(VecDeque::new()));
     let queue_2to3 = Rc::new(RefCell::new(VecDeque::new()));
 
+    let mut peers1 = HashMap::new();
     let mut in_queues1 = HashMap::new();
     let mut out_queues1 = HashMap::new();
+    let mut peers2 = HashMap::new();
     let mut in_queues2 = HashMap::new();
     let mut out_queues2 = HashMap::new();
+    let mut peers3 = HashMap::new();
     let mut in_queues3 = HashMap::new();
     let mut out_queues3 = HashMap::new();
 
+    peers1.insert(0b010, pk2);
     in_queues1.insert(0b010, queue_2to1.clone());
     out_queues1.insert(0b010, queue_1to2.clone());
+
+    peers2.insert(0b011, pk1);
     in_queues2.insert(0b011, queue_1to2.clone());
     out_queues2.insert(0b011, queue_2to1.clone());
 
+    peers2.insert(0b100, pk3);
     in_queues2.insert(0b100, queue_3to2.clone());
     out_queues2.insert(0b100, queue_2to3.clone());
+
+    peers3.insert(0b101, pk2);
     in_queues3.insert(0b101, queue_2to3.clone());
     out_queues3.insert(0b101, queue_3to2.clone());
 
@@ -68,6 +77,7 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing, PublicKey
     let node1 = Plumbing {
         router: Router::new(pk1.clone()),
         network_adapter: MockNetworkAdapter {
+            peers: peers1,
             in_queues: in_queues1,
             out_queues: out_queues1,
         },
@@ -80,6 +90,7 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing, PublicKey
     let node2 = Plumbing {
         router: Router::new(pk2.clone()),
         network_adapter: MockNetworkAdapter {
+            peers: peers2,
             in_queues: in_queues2,
             out_queues: out_queues2,
         },
@@ -92,6 +103,7 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing, PublicKey
     let node3 = Plumbing {
         router: Router::new(pk3.clone()),
         network_adapter: MockNetworkAdapter {
+            peers: peers3,
             in_queues: in_queues3,
             out_queues: out_queues3,
         },

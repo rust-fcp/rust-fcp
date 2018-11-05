@@ -23,6 +23,9 @@ pub trait RouterTrait {
 pub trait NetworkAdapterTrait {
     fn send_to(&mut self, to: Director, packet: &SwitchPacket);
     fn recv_from(&mut self) -> (Director, Vec<SwitchPacket>);
+
+    fn directors(&self) -> Vec<Director>;
+    fn get_pk(&self, dir: Director) -> Option<&PublicKey>;
 }
 
 pub struct Plumbing<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> {

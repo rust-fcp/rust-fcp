@@ -88,4 +88,12 @@ impl<PeerId: Clone> NetworkAdapterTrait for UdpAdapter<PeerId> {
         self.on_outer_ca_message(addr, datagram)
     }
 
+    fn directors(&self) -> Vec<Director> {
+        self.peers.keys().cloned().collect()
+    }
+    fn get_pk(&self, dir: Director) -> Option<&PublicKey> {
+        self.peers.get(&dir).map(|peer|
+            peer.ca_session.their_pk()
+        )
+    }
 }
