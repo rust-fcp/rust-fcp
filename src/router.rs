@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+use std::iter::FromIterator;
+
 use fcp_cryptoauth::{PublicKey, publickey_to_ipv6addr};
 
 use packets::route::{RoutePacket, RoutePacketBuilder, NodeData};
-use std::iter::FromIterator;
 use encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 
-use operation::{ForwardPath, BackwardPath};
+use operation::{ForwardPath, BackwardPath, Director};
 use node_store::{NodeStore, GetNodeResult};
 use node::{Address, Node};
 use plumbing::RouterTrait;
@@ -18,14 +20,16 @@ const PROTOCOL_VERSION: i64 = 18;
 pub struct Router {
     my_pk: PublicKey,
     node_store: NodeStore,
-    peers: Vec<(SessionHandle, PublicKey, ForwardPath)>,
+    paths: Vec<(SessionHandle, PublicKey, ForwardPath)>,
+    peers: HashMap<Director, PublicKey>,
 }
 
 impl Router {
     pub fn new(my_pk: PublicKey) -> Router {
         Router {
             node_store: NodeStore::new(publickey_to_ipv6addr(&my_pk).into()),
-            peers: Vec::new(),
+            paths: Vec::new(),
+            peers: HashMap::new(),
             my_pk: my_pk,
         }
     }
@@ -63,7 +67,7 @@ impl Router {
     }
 
     /// Reply to `gp` queries by sending a list of my peers.
-    fn on_getpeers(&mut self, packet: &RoutePacket, handle: SessionHandle) -> Vec<RoutePacket> {
+    fn on_getpeers(&mut self, packet: &RoutePacket, requester_pk: &PublicKey) -> Vec<RoutePacket> {
         let mut nodes = Vec::new();
         {
             // Add myself
@@ -75,11 +79,12 @@ impl Router {
                 version: 18,
             });
         }
-        for &(peer_handle, pk, path) in self.peers.iter() {
-            if peer_handle != handle {
+        for (&director, pk) in self.peers.iter() {
+            if pk != requester_pk {
+                let path = ForwardPath::from(director);
                 nodes.push(NodeData {
                     public_key: pk.0,
-                    path: ForwardPath::into(path),
+                    path: path.into(),
                     version: 18, // TODO
                 });
             }
@@ -99,7 +104,7 @@ impl Router {
 impl RouterTrait for Router {
     fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: SessionHandle, pk: PublicKey) -> Vec<RoutePacket> {
         let responses = match packet.query.as_ref().map(String::as_ref) {
-            Some("gp") => self.on_getpeers(packet, handle),
+            Some("gp") => self.on_getpeers(packet, &pk),
             _ => Vec::new(),
         };
         let node = Node::new(pk.0, path.reverse(), packet.protocol_version as u64);

@@ -63,6 +63,17 @@ impl ForwardPath {
         BackwardPath(self.0)
     }
 }
+impl From<Director> for ForwardPath {
+    #[inline(always)]
+    fn from(path: Director) -> ForwardPath {
+        let mut label = [0; LABEL_LENGTH];
+        #[cfg(not(feature="sfcp"))]
+        BigEndian::write_u64(&mut label[LABEL_LENGTH-8..LABEL_LENGTH], path);
+        #[cfg(feature="sfcp")]
+        BigEndian::write_u128(&mut label[LABEL_LENGTH-8..LABEL_LENGTH], path);
+        ForwardPath(label)
+    }
+}
 
 /// Representation of where the packet should be sent, according to the label.
 #[derive(Eq)]
