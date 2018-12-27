@@ -7,8 +7,13 @@ use byteorder::ByteOrder;
 
 use packets::route::RoutePacket;
 
+/// https://github.com/cjdelisle/cjdns/blob/cjdns-v20/wire/ContentType.h#L18
 #[derive(Debug, Clone)]
 pub enum Payload {
+    /// ContentType <= 255: it's mapped on IPv6's Next Header field. See
+    /// https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+    Ip6Content(u8, Vec<u8>),
+    /// aka CJDHT packet, ContentType 256
     RoutePacket(RoutePacket),
 }
 
@@ -22,11 +27,15 @@ impl DataPacket {
         assert!(version <= 0b1111);
         let mut raw = vec![version << 4, 0, 0, 0];
         match *payload {
+            Payload::Ip6Content(next_header, ref content) => {
+                BigEndian::write_u16(&mut raw[2..4], next_header as u16);
+                raw.extend(content) // TODO: do not copy
+            },
             Payload::RoutePacket(ref route_packet) => {
                 BigEndian::write_u16(&mut raw[2..4], 256);
                 let encoded_route_packet = route_packet.clone().encode(); // TODO: do not copy
                 raw.extend(encoded_route_packet) // TODO: do not copy
-            }
+            },
         }
         DataPacket { raw: raw }
     }
@@ -49,6 +58,9 @@ impl DataPacket {
     pub fn payload(&self) -> Result<Payload, String> {
         let content_type = self.content_type();
         match content_type {
+            0..=255 => {
+                Ok(Payload::Ip6Content(content_type as u8, self.raw[4..].to_vec()))
+            }
             256 => {
                 match RoutePacket::decode(&self.raw[4..]) {
                     Ok(packet) => Ok(Payload::RoutePacket(packet)),

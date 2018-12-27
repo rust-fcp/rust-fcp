@@ -69,6 +69,7 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing) {
         switch: PassiveSwitch::new(pk1.clone(), sk1.clone(), allowed_peers),
         session_manager: session_manager1,
         pongs: Some(VecDeque::new()),
+        rx_buffer: VecDeque::new(),
     };
 
     let session_manager2 = SessionManager::new(pk2.clone(), sk2.clone());
@@ -82,6 +83,7 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing) {
         switch: PassiveSwitch::new(pk2.clone(), sk2.clone(), HashMap::new()),
         session_manager: session_manager2,
         pongs: Some(VecDeque::new()),
+        rx_buffer: VecDeque::new(),
     };
 
     (pk1, node1, pk2, node2)

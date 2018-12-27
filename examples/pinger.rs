@@ -6,7 +6,7 @@ extern crate fcp;
 
 use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv6Addr};
 use std::iter::FromIterator;
-use std::collections::HashMap;
+use std::collections::{VecDeque, HashMap};
 use std::str::FromStr;
 
 use fcp_cryptoauth::*;
@@ -52,6 +52,7 @@ impl Pinger {
             router: Router::new(my_pk),
             session_manager: session_manager,
             pongs: None,
+            rx_buffer: VecDeque::new(),
         };
         Pinger {
             plumbing: plumbing,

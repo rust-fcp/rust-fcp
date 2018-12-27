@@ -6,7 +6,7 @@ extern crate fcp;
 
 use std::net::{UdpSocket, SocketAddr, IpAddr, Ipv6Addr};
 use std::iter::FromIterator;
-use std::collections::HashMap;
+use std::collections::{VecDeque, HashMap};
 
 use fcp_cryptoauth::*;
 
@@ -44,6 +44,7 @@ impl UdpSwitch {
             router: Router::new(my_pk),
             session_manager: session_manager,
             pongs: None,
+            rx_buffer: VecDeque::new(),
         };
         UdpSwitch {
             plumbing: plumbing,

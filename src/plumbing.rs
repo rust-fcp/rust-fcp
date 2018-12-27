@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
+use std::net::Ipv6Addr;
 
-use fcp_cryptoauth::PublicKey;
+use fcp_cryptoauth::{PublicKey, publickey_to_ipv6addr};
 
 use passive_switch::PassiveSwitch;
 use packets::switch::SwitchPacket;
@@ -36,6 +37,8 @@ pub struct Plumbing<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> {
     /// If not `None`, holds a list of the opaque data received in Pong
     /// packets. Use only when debugging, as it is a DoS vulnerability.
     pub pongs: Option<VecDeque<Vec<u8>>>,
+    /// Received "content" packets. Contains 3-tuples `(src_addr, next_header, content)`.
+    pub rx_buffer: VecDeque<(Ipv6Addr, u8, Vec<u8>)>,
 }
 
 impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, NetworkAdapter> {
@@ -97,6 +100,13 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
             let session = self.session_manager.get_session(handle).unwrap();
 
             let route_packets = match data_packet.payload().unwrap() {
+                DataPayload::Ip6Content(next_header, ref content) => {
+                    let their_pk = session.conn.their_pk();
+                    let their_ipv6_addr = publickey_to_ipv6addr(their_pk);
+                    self.rx_buffer.push_back(
+                        (their_ipv6_addr, next_header, content.clone())); // TODO: do not clone
+                    Vec::new()
+                }
                 DataPayload::RoutePacket(route_packet) => {
                     self.router.on_route_packet(&route_packet, path, handle, session.conn.their_pk().clone())
                 }
