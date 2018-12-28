@@ -24,7 +24,7 @@ use fcp::passive_switch::PassiveSwitch;
 use fcp::udp_adapter::{UdpAdapter, UdpPeer};
 use fcp::utils::{make_reply, new_from_raw_content};
 use fcp::plumbing::Plumbing;
-use fcp::session_manager::{SessionManager, SessionHandle};
+use fcp::session_manager::{SessionManager, MySessionHandle, TheirSessionHandle};
 use fcp::plumbing::NetworkAdapterTrait;
 
 use fcp::node::{Address, Node};
@@ -38,7 +38,7 @@ struct Pinger {
 
     ping_targets: Vec<Address>,
     ping_nodes: Vec<Node>,
-    address_to_handle: HashMap<Address, SessionHandle>,
+    address_to_my_handle: HashMap<Address, MySessionHandle>,
 }
 
 impl Pinger {
@@ -59,15 +59,15 @@ impl Pinger {
 
             ping_targets: ping_targets,
             ping_nodes: Vec::new(),
-            address_to_handle: HashMap::new(),
+            address_to_my_handle: HashMap::new(),
             }
     }
 
     /// Sometimes (random) sends a switch as a reply to the packet.
-    fn random_send_switch_ping(&mut self, handle: SessionHandle, path: ForwardPath) {
+    fn random_send_switch_ping(&mut self, my_handle: MySessionHandle, path: ForwardPath) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let ping = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
-            let packet_response = new_from_raw_content(path, ping.encode(), Some(handle));
+            let packet_response = SwitchPacket::new(path, SwitchPayload::Control(ping));
             self.plumbing.dispatch(packet_response, 0b001);
         }
     }
@@ -75,27 +75,32 @@ impl Pinger {
     fn send_message_to_node(&mut self, node: &Node, message: DataPacket) {
         let node_pk = PublicKey::from_slice(node.public_key()).unwrap();
         let addr = publickey_to_ipv6addr(&node_pk).into();
-        let handle_opt = self.address_to_handle.get(&addr).map(|h| *h);
-        match handle_opt {
-            Some(handle) => self.send_message_to_handle(handle, message),
+        let my_handle_opt = self.address_to_my_handle.get(&addr).map(|h| *h);
+        match my_handle_opt {
+            Some(my_handle) => self.send_message_to_my_handle(my_handle, message),
             None => {
                 println!("Creating CA session for node {}", Ipv6Addr::from(&addr));
                 let credentials = Credentials::None;
                 let path = node.path().clone();
                 let handle = self.plumbing.session_manager.add_outgoing(path, node_pk, credentials);
-                self.address_to_handle.insert(addr.into(), handle);
-                self.send_message_to_handle(handle, message)
+                self.address_to_my_handle.insert(addr.into(), handle);
+                self.send_message_to_my_handle(handle, message)
             }
         }
     }
 
-    fn send_message_to_handle(&mut self, handle: SessionHandle, message: DataPacket) {
+    fn send_message_to_my_handle(&mut self, my_handle: MySessionHandle, message: DataPacket) {
         let mut packets = Vec::new();
         {
-            let session = self.plumbing.session_manager.get_session(handle).unwrap();
-            println!("Sending inner ca message to handle {:?} with path {:?}: {}", handle, session.path, message);
+            let their_handle = {
+                let path = self.plumbing.session_manager.get_session(my_handle).unwrap().path;
+                let their_handle = self.plumbing.get_their_handle(path);
+                their_handle
+            };
+            let session = self.plumbing.session_manager.get_session(my_handle).unwrap();
+            println!("Sending inner ca message to handle {:?} with path {:?}: {}", my_handle, session.path, message);
             for packet_response in session.conn.wrap_message_immediately(&message.raw) {
-                let switch_packet = SwitchPacket::new(session.path, SwitchPayload::CryptoAuthData(handle, packet_response));
+                let switch_packet = SwitchPacket::new(session.path, SwitchPayload::CryptoAuthData(their_handle.0, packet_response));
                 packets.push(switch_packet);
             }
         }
@@ -143,7 +148,7 @@ impl Pinger {
         if rand::thread_rng().next_u32() > 0xafffffff || true {
             println!("Pinging nodes.");
             for address in self.ping_targets.clone() {
-                if !self.address_to_handle.contains_key(&address) {
+                if !self.address_to_my_handle.contains_key(&address) {
                     self.try_connect_ping_target(&address)
                 }
             }
@@ -166,11 +171,11 @@ impl Pinger {
             }
 
             let mut targets = Vec::new();
-            for (handle, ref mut session) in self.plumbing.session_manager.sessions.iter_mut() {
-                targets.push((*handle, session.path))
+            for (my_handle, ref mut session) in self.plumbing.session_manager.sessions.iter_mut() {
+                targets.push((*my_handle, session.path))
             }
-            for (handle, path) in targets {
-                self.random_send_switch_ping(handle, path);
+            for (my_handle, path) in targets {
+                self.random_send_switch_ping(my_handle, path);
             }
 
             self.random_ping_node();

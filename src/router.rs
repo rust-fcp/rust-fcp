@@ -10,7 +10,7 @@ use operation::{ForwardPath, BackwardPath, Director};
 use node_store::{NodeStore, GetNodeResult};
 use node::{Address, Node};
 use plumbing::RouterTrait;
-use session_manager::SessionHandle;
+use session_manager::MySessionHandle;
 
 const PROTOCOL_VERSION: i64 = 18;
 
@@ -20,7 +20,7 @@ const PROTOCOL_VERSION: i64 = 18;
 pub struct Router {
     my_pk: PublicKey,
     node_store: NodeStore,
-    paths: Vec<(SessionHandle, PublicKey, ForwardPath)>,
+    paths: Vec<(MySessionHandle, PublicKey, ForwardPath)>,
     peers: HashMap<Director, PublicKey>,
 }
 
@@ -102,7 +102,7 @@ impl Router {
 }
 
 impl RouterTrait for Router {
-    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: SessionHandle, pk: PublicKey) -> Vec<RoutePacket> {
+    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: MySessionHandle, pk: PublicKey) -> Vec<RoutePacket> {
         let responses = match packet.query.as_ref().map(String::as_ref) {
             Some("gp") => self.on_getpeers(packet, &pk),
             _ => Vec::new(),

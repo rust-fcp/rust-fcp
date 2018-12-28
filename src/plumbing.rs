@@ -13,12 +13,20 @@ use session_manager::SessionManager;
 use packets::data::DataPacket;
 use packets::data::Payload as DataPayload;
 use utils::{new_from_raw_content, make_reply};
-use session_manager::SessionHandle;
+use session_manager::{MySessionHandle, TheirSessionHandle, SessionHandle};
+
+pub const DATAPACKET_VERSION: u8 = 1;
+
+pub struct Ip6Content {
+    addr: Ipv6Addr,
+    next_header: u8,
+    content: Vec<u8>,
+}
 
 pub trait RouterTrait {
     /// Called when a RoutePacket is received from the network.
     /// Optionally returns RoutePackets to send back.
-    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: SessionHandle, pk: PublicKey) -> Vec<RoutePacket>;
+    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: MySessionHandle, pk: PublicKey) -> Vec<RoutePacket>;
 }
 
 pub trait NetworkAdapterTrait {
@@ -37,8 +45,8 @@ pub struct Plumbing<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> {
     /// If not `None`, holds a list of the opaque data received in Pong
     /// packets. Use only when debugging, as it is a DoS vulnerability.
     pub pongs: Option<VecDeque<Vec<u8>>>,
-    /// Received "content" packets. Contains 3-tuples `(src_addr, next_header, content)`.
-    pub rx_buffer: VecDeque<(Ipv6Addr, u8, Vec<u8>)>,
+    /// Received "content" packets.
+    pub rx_buffer: VecDeque<Ip6Content>,
 }
 
 impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, NetworkAdapter> {
@@ -62,7 +70,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
 
     /// Called when a switch packet is sent to the self interface
     fn on_self_interface_switch_packet(&mut self, switch_packet: &SwitchPacket)
-            -> Option<(SessionHandle, Vec<DataPacket>)> {
+            -> Option<(MySessionHandle, Vec<DataPacket>)> {
         match switch_packet.payload() {
             Some(SwitchPayload::Control(control_packet)) => {
                 self.on_control_packet(control_packet, switch_packet.label().into());
@@ -85,6 +93,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 // If it is a CryptoAuth data packet, first read the session
                 // handle to know which CryptoAuth session to use to
                 // decrypt it.
+                let handle = MySessionHandle(handle);
                 let inner_packets = self.session_manager.unwrap_message(handle, ca_message);
                 Some((handle, inner_packets))
             }
@@ -94,17 +103,20 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
 
     /// Called when a CryptoAuth-wrapped message is received through an end-to-end
     /// session.
-    fn on_data_packet(&mut self, data_packet: &DataPacket, handle: SessionHandle, path: BackwardPath) {
+    fn on_data_packet(&mut self, data_packet: &DataPacket, handle: MySessionHandle, path: BackwardPath) {
         let mut responses = Vec::new();
         {
+            let their_handle = self.get_their_handle(path.reverse());
             let session = self.session_manager.get_session(handle).unwrap();
 
             let route_packets = match data_packet.payload().unwrap() {
                 DataPayload::Ip6Content(next_header, ref content) => {
                     let their_pk = session.conn.their_pk();
                     let their_ipv6_addr = publickey_to_ipv6addr(their_pk);
-                    self.rx_buffer.push_back(
-                        (their_ipv6_addr, next_header, content.clone())); // TODO: do not clone
+                    self.rx_buffer.push_back(Ip6Content {
+                        addr: their_ipv6_addr, next_header,
+                        content: content.clone(), // TODO: do not clone
+                    });
                     Vec::new()
                 }
                 DataPayload::RoutePacket(route_packet) => {
@@ -112,11 +124,12 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 }
             };
             for route_packet in route_packets.into_iter() {
-                let getpeers_response = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
+                let getpeers_response = DataPacket::new(
+                    DATAPACKET_VERSION, &DataPayload::RoutePacket(route_packet));
                 responses.extend(session.conn
                         .wrap_message_immediately(&getpeers_response.raw)
                         .into_iter()
-                        .map(|r| new_from_raw_content(path.reverse(), r, Some(handle))));
+                        .map(|r| new_from_raw_content(path.reverse(), r, Some(their_handle))));
             }
         }
         for response in responses {
@@ -125,7 +138,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
     }
 
     pub fn dispatch(&mut self, packet: SwitchPacket, from_interface: Director)
-            -> Option<(SessionHandle, Vec<DataPacket>)> {
+            -> Option<(MySessionHandle, Vec<DataPacket>)> {
         let path = BackwardPath::from(packet.label());
         let (to_self, forward) = self.switch.forward(packet, from_interface);
         for (interface, packet) in forward { self.network_adapter.send_to(interface, &packet) };
@@ -140,7 +153,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
             })
     }
 
-    pub fn upkeep(&mut self) -> Vec<(SessionHandle, Vec<DataPacket>)> {
+    pub fn upkeep(&mut self) -> Vec<(MySessionHandle, Vec<DataPacket>)> {
         let (director, messages) = self.network_adapter.recv_from();
         let mut to_self = Vec::new();
         for message in messages.into_iter() {
@@ -149,5 +162,10 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
             }
         }
         to_self
+    }
+
+    pub fn get_their_handle(&self, path: ForwardPath) -> TheirSessionHandle {
+        *self.session_manager.path_to_their_handle.get(&path)
+            .expect("unimplemented; Session not fully established") // TODO
     }
 }

@@ -10,7 +10,7 @@ use std::collections::{VecDeque, HashMap};
 
 use fcp_cryptoauth::*;
 
-use fcp::packets::switch::SwitchPacket;
+use fcp::packets::switch::{SwitchPacket, Payload as SwitchPayload};
 use fcp::operation::{Director, ForwardPath, BackwardPath};
 use fcp::packets::control::ControlPacket;
 use fcp::packets::route::{RoutePacket, RoutePacketBuilder, NodeData};
@@ -22,7 +22,7 @@ use fcp::udp_adapter::{UdpAdapter, UdpPeer};
 use fcp::utils::{make_reply, new_from_raw_content};
 use fcp::router::Router;
 use fcp::plumbing::Plumbing;
-use fcp::session_manager::{SessionManager, SessionHandle};
+use fcp::session_manager::{SessionManager, MySessionHandle, TheirSessionHandle};
 use fcp::plumbing::NetworkAdapterTrait;
 
 use hex::ToHex;
@@ -52,16 +52,16 @@ impl UdpSwitch {
     }
 
     /// Sometimes (random) sends a switch as a reply to the packet.
-    fn random_send_switch_ping(&mut self, handle: SessionHandle, path: ForwardPath) {
+    fn random_send_switch_ping(&mut self, my_handle: MySessionHandle, path: ForwardPath) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let ping = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
-            let packet_response = new_from_raw_content(path, ping.encode(), Some(handle));
+            let packet_response = SwitchPacket::new(path, SwitchPayload::Control(ping));
             self.plumbing.dispatch(packet_response, 0b001);
         }
     }
             
     /// Sometimes (random) sends a `gp` query.
-    fn random_send_getpeers(&mut self, handle: SessionHandle, path: ForwardPath) {
+    fn random_send_getpeers(&mut self, my_handle: MySessionHandle, path: ForwardPath) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
             let route_packet = RoutePacketBuilder::new(18, b"blah".to_vec())
@@ -73,10 +73,11 @@ impl UdpSwitch {
             let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
             let mut responses = Vec::new();
             {
-                let session = self.plumbing.session_manager.get_session(handle).unwrap();
+                let their_handle = self.plumbing.get_their_handle(path);
+                let session = self.plumbing.session_manager.get_session(my_handle).unwrap();
                 println!("Sending data packet: {}", getpeers_message);
                 for packet_response in session.conn.wrap_message_immediately(&getpeers_message.raw) {
-                    responses.push(new_from_raw_content(path, packet_response, Some(handle)));
+                    responses.push(new_from_raw_content(path, packet_response, Some(their_handle)));
                 }
             }
             for response in responses {
@@ -97,12 +98,12 @@ impl UdpSwitch {
             }
 
             let mut targets = Vec::new();
-            for (handle, ref mut session) in self.plumbing.session_manager.sessions.iter_mut() {
-                targets.push((*handle, session.path))
+            for (my_handle, ref mut session) in self.plumbing.session_manager.sessions.iter_mut() {
+                targets.push((*my_handle, session.path))
             }
-            for (handle, path) in targets {
-                self.random_send_switch_ping(handle, path);
-                self.random_send_getpeers(handle, path)
+            for (my_handle, path) in targets {
+                self.random_send_switch_ping(my_handle, path);
+                self.random_send_getpeers(my_handle, path)
             }
 
             let (director, messages) = self.plumbing.network_adapter.recv_from();
