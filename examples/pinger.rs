@@ -82,7 +82,7 @@ impl Pinger {
                 println!("Creating CA session for node {}", Ipv6Addr::from(&addr));
                 let credentials = Credentials::None;
                 let path = node.path().clone();
-                let handle = self.plumbing.session_manager.add_outgoing(path, node_pk, credentials);
+                let handle = self.plumbing.session_manager.add_outgoing(path, node_pk);
                 self.address_to_my_handle.insert(addr.into(), handle);
                 self.send_message_to_my_handle(handle, message)
             }
@@ -95,7 +95,7 @@ impl Pinger {
             let session = self.plumbing.session_manager.get_session(my_handle).unwrap();
             let their_handle = session.their_handle().unwrap();
             println!("Sending inner ca message to handle {:?} with path {:?}: {}", my_handle, session.path, message);
-            for packet_response in session.conn.wrap_message_immediately(&message.raw) {
+            for packet_response in session.conn.wrap_message_immediately(message.raw()) {
                 let switch_packet = SwitchPacket::new(session.path, SwitchPayload::CryptoAuthData(their_handle.0, packet_response));
                 packets.push(switch_packet);
             }

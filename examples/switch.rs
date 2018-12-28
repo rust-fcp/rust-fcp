@@ -75,7 +75,7 @@ impl UdpSwitch {
             {
                 let session = self.plumbing.session_manager.get_session(my_handle).unwrap();
                 println!("Sending data packet: {}", getpeers_message);
-                for packet_response in session.conn.wrap_message_immediately(&getpeers_message.raw) {
+                for packet_response in session.conn.wrap_message_immediately(&getpeers_message.raw()) {
                     responses.push(new_from_raw_content(path, packet_response, session.their_handle()));
                 }
             }

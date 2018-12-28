@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::net::Ipv6Addr;
 
-use fcp_cryptoauth::{PublicKey, publickey_to_ipv6addr};
+use fcp_cryptoauth::{PublicKey, publickey_to_ipv6addr, Credentials};
 
 use passive_switch::PassiveSwitch;
 use packets::switch::SwitchPacket;
@@ -80,14 +80,18 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 // If it is a CryptoAuth handshake Hello packet (ie. if someone is
                 // connecting to us), create a new session for this node.
                 let (handle, inner_packet) = self.session_manager.on_hello(handshake, switch_packet);
-                Some((handle, vec![DataPacket { raw: inner_packet }]))
+                let inner_packet = DataPacket::new_from_raw(inner_packet)
+                    .expect("Could not decode data packet");
+                Some((handle, vec![inner_packet]))
             },
             Some(SwitchPayload::CryptoAuthKey(handshake)) => {
                 // If it is a CryptoAuth handshake Key packet (ie. if someone is
                 // replies to our connection attempt), find its session and
                 // update it.
                 let (handle, inner_packet) = self.session_manager.on_key(handshake, switch_packet).unwrap();
-                Some((handle, vec![DataPacket { raw: inner_packet }]))
+                let inner_packet = DataPacket::new_from_raw(inner_packet)
+                    .expect("Could not decode data packet");
+                Some((handle, vec![inner_packet]))
             },
             Some(SwitchPayload::CryptoAuthData(handle, ca_message)) => {
                 // If it is a CryptoAuth data packet, first read the session
@@ -126,7 +130,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 let getpeers_response = DataPacket::new(
                     DATAPACKET_VERSION, &DataPayload::RoutePacket(route_packet));
                 responses.extend(session.conn
-                        .wrap_message_immediately(&getpeers_response.raw)
+                        .wrap_message_immediately(&getpeers_response.raw())
                         .into_iter()
                         .map(|r| new_from_raw_content(path.reverse(), r, session.their_handle())));
             }
@@ -160,6 +164,14 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 to_self.push(pkts);
             }
         }
+        self.upkeep2();
         to_self
+    }
+
+    fn upkeep2(&mut self) {
+        for message in self.session_manager.upkeep() {
+            let to_self = self.dispatch(message, 0b001);
+            assert!(to_self.is_none());
+        }
     }
 }

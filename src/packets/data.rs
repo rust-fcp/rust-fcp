@@ -19,10 +19,18 @@ pub enum Payload {
 
 #[derive(Debug, Clone)]
 pub struct DataPacket {
-    pub raw: Vec<u8>,
+    raw: Vec<u8>,
 }
 
 impl DataPacket {
+    pub fn new_from_raw(raw: Vec<u8>) -> Option<DataPacket> {
+        if raw.len() >= 4 {
+            Some(DataPacket { raw })
+        }
+        else {
+            None
+        }
+    }
     pub fn new(version: u8, payload: &Payload) -> DataPacket {
         assert!(version <= 0b1111);
         let mut raw = vec![version << 4, 0, 0, 0];
@@ -38,6 +46,9 @@ impl DataPacket {
             },
         }
         DataPacket { raw: raw }
+    }
+    pub fn raw(&self) -> &[u8] {
+        &self.raw
     }
     pub fn version(&self) -> u8 {
         self.raw[0] >> 4

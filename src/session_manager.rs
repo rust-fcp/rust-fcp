@@ -59,13 +59,15 @@ impl SessionManager {
             }
         }
     }
-    pub fn add_outgoing(&mut self, path: ForwardPath, node_pk: PublicKey, credentials: Credentials) -> MySessionHandle {
+    pub fn add_outgoing(&mut self, path: ForwardPath, node_pk: PublicKey) -> MySessionHandle {
+        let handle = self.gen_handle();
         let conn = CAWrapper::new_outgoing_connection(
                 self.my_pk.clone(), self.my_sk.clone(),
                 node_pk,
-                credentials, None,
-                (), None);
-        let handle = self.gen_handle();
+                Credentials::None,
+                None,
+                (),
+                Some((handle.0).0));
         self.path_to_my_handle.insert(path.clone().reverse(), handle);
         self.sessions.insert(handle, Session { path: path, conn: conn });
         handle
@@ -95,7 +97,9 @@ impl SessionManager {
     pub fn unwrap_message(&mut self, handle: MySessionHandle, packet: Vec<u8>) -> Vec<DataPacket> {
         let session = self.sessions.get_mut(&handle).unwrap();
         let raw_packets = session.conn.unwrap_message(packet).unwrap();
-        raw_packets.into_iter().map(|raw| DataPacket { raw: raw }).collect()
+        raw_packets.into_iter().map(|raw|
+            DataPacket::new_from_raw(raw).expect("Could not decode data packet")
+        ).collect()
     }
 
     pub fn get_session(&mut self, handle: MySessionHandle) -> Option<&mut Session> {
