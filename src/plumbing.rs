@@ -106,7 +106,6 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
     fn on_data_packet(&mut self, data_packet: &DataPacket, handle: MySessionHandle, path: BackwardPath) {
         let mut responses = Vec::new();
         {
-            let their_handle = self.get_their_handle(path.reverse());
             let session = self.session_manager.get_session(handle).unwrap();
 
             let route_packets = match data_packet.payload().unwrap() {
@@ -129,7 +128,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 responses.extend(session.conn
                         .wrap_message_immediately(&getpeers_response.raw)
                         .into_iter()
-                        .map(|r| new_from_raw_content(path.reverse(), r, Some(their_handle))));
+                        .map(|r| new_from_raw_content(path.reverse(), r, session.their_handle())));
             }
         }
         for response in responses {
@@ -162,10 +161,5 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
             }
         }
         to_self
-    }
-
-    pub fn get_their_handle(&self, path: ForwardPath) -> TheirSessionHandle {
-        *self.session_manager.path_to_their_handle.get(&path)
-            .expect("unimplemented; Session not fully established") // TODO
     }
 }

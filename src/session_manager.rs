@@ -23,6 +23,12 @@ pub struct Session {
     pub conn: CAWrapper<()>,
 }
 
+impl Session {
+    pub fn their_handle(&self) -> Option<TheirSessionHandle> {
+        self.conn.peer_session_handle().map(SessionHandle).map(TheirSessionHandle)
+    }
+}
+
 pub struct SessionManager {
     pub my_pk: PublicKey,
     pub my_sk: SecretKey,
@@ -33,8 +39,6 @@ pub struct SessionManager {
 
     /// Map from incoming paths to the session handle I use to decrypt their messages
     pub path_to_my_handle: HashMap<BackwardPath, MySessionHandle>,
-    /// Map from outgoing paths to the session handle they use to decrypt my messages
-    pub path_to_their_handle: HashMap<ForwardPath, TheirSessionHandle>,
 }
 
 impl SessionManager {
@@ -44,7 +48,6 @@ impl SessionManager {
             my_sk: my_sk,
             sessions: HashMap::new(),
             path_to_my_handle: HashMap::new(),
-            path_to_their_handle: HashMap::new(),
         }
     }
 
@@ -102,10 +105,9 @@ impl SessionManager {
     pub fn upkeep(&mut self) -> Vec<SwitchPacket> {
         let mut packets = Vec::new();
         for (_my_handle, ref mut session) in self.sessions.iter_mut() {
-            let their_handle = *self.path_to_their_handle.get(&session.path)
-                .expect("unimplemented: session not fully established");
+            let their_handle = session.conn.peer_session_handle().map(SessionHandle).map(TheirSessionHandle);
             for ca_message in session.conn.upkeep() {
-                packets.push(new_from_raw_content(session.path, ca_message, Some(their_handle)));
+                packets.push(new_from_raw_content(session.path, ca_message, their_handle));
             }
         }
         packets

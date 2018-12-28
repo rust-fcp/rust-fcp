@@ -73,11 +73,10 @@ impl UdpSwitch {
             let getpeers_message = DataPacket::new(1, &DataPayload::RoutePacket(route_packet));
             let mut responses = Vec::new();
             {
-                let their_handle = self.plumbing.get_their_handle(path);
                 let session = self.plumbing.session_manager.get_session(my_handle).unwrap();
                 println!("Sending data packet: {}", getpeers_message);
                 for packet_response in session.conn.wrap_message_immediately(&getpeers_message.raw) {
-                    responses.push(new_from_raw_content(path, packet_response, Some(their_handle)));
+                    responses.push(new_from_raw_content(path, packet_response, session.their_handle()));
                 }
             }
             for response in responses {

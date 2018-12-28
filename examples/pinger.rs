@@ -92,12 +92,8 @@ impl Pinger {
     fn send_message_to_my_handle(&mut self, my_handle: MySessionHandle, message: DataPacket) {
         let mut packets = Vec::new();
         {
-            let their_handle = {
-                let path = self.plumbing.session_manager.get_session(my_handle).unwrap().path;
-                let their_handle = self.plumbing.get_their_handle(path);
-                their_handle
-            };
             let session = self.plumbing.session_manager.get_session(my_handle).unwrap();
+            let their_handle = session.their_handle().unwrap();
             println!("Sending inner ca message to handle {:?} with path {:?}: {}", my_handle, session.path, message);
             for packet_response in session.conn.wrap_message_immediately(&message.raw) {
                 let switch_packet = SwitchPacket::new(session.path, SwitchPayload::CryptoAuthData(their_handle.0, packet_response));
