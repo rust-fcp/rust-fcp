@@ -143,4 +143,9 @@ fn routerctrl_ping_peer() {
     assert_eq!(to_self2.len(), 1);
     let (handle, ref msgs) = to_self2[0];
     assert_eq!(msgs.len(), 0);
+
+    let to_self1 = node1.upkeep();
+    assert_eq!(to_self1.len(), 1);
+    let (handle, ref msgs) = to_self1[0];
+    assert_eq!(msgs.len(), 0);
 }

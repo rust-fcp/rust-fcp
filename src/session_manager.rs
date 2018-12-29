@@ -81,16 +81,12 @@ impl SessionManager {
         (handle, message)
     }
 
-    pub fn on_key(&mut self, packet: Vec<u8>, switch_packet: &SwitchPacket) -> Option<(MySessionHandle, Vec<u8>)> {
+    pub fn on_key(&mut self, packet: Vec<u8>, switch_packet: &SwitchPacket) -> (MySessionHandle, Vec<DataPacket>) {
         // TODO: use pk instead of path to find the session.
-        self.path_to_my_handle.get(&BackwardPath::from(switch_packet.label()))
-            .cloned()
-            .map(|handle| {
-            let (conn, message) = CAWrapper::new_incoming_connection(self.my_pk, self.my_sk.clone(), Credentials::None, None, Some((handle.0).0), packet).unwrap();
-            let path = BackwardPath::from(switch_packet.label()).reverse();
-            self.sessions.insert(handle, Session { path: path, conn: conn });
-            (handle, message)
-        })
+        let path = BackwardPath::from(switch_packet.label());
+        let my_handle = *self.path_to_my_handle.get(&path)
+            .expect("Got Key message from a path I never sent a Hello to.");
+        (my_handle, self.unwrap_message(my_handle, packet))
     }
 
 

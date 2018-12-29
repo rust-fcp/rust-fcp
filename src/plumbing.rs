@@ -93,15 +93,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 // If it is a CryptoAuth handshake Key packet (ie. if someone is
                 // replies to our connection attempt), find its session and
                 // update it.
-                let (handle, inner_packet) = self.session_manager.on_key(handshake, switch_packet).unwrap();
-                if inner_packet.len() > 0 {
-                    let inner_packet = DataPacket::new_from_raw(inner_packet)
-                        .expect("Could not decode data packet");
-                    Some((handle, vec![inner_packet]))
-                }
-                else {
-                    Some((handle, vec![]))
-                }
+                Some(self.session_manager.on_key(handshake, switch_packet))
             },
             Some(SwitchPayload::CryptoAuthData(handle, ca_message)) => {
                 // If it is a CryptoAuth data packet, first read the session
