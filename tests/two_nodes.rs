@@ -121,3 +121,26 @@ fn switchctrl_ping_peer() {
     assert_eq!(node1.pongs.as_ref().unwrap().len(), 1);
     assert_eq!(node2.pongs.as_ref().unwrap().len(), 0);
 }
+
+
+#[test]
+fn routerctrl_ping_peer() {
+    fcp_cryptoauth::init();
+
+    let (_pk1, mut node1, pk2, mut node2) = setup_nodes();
+
+    assert_eq!(node1.session_manager.upkeep().len(), 0);
+    assert_eq!(node2.session_manager.upkeep().len(), 0);
+
+    #[cfg(not(feature="sfcp"))]
+    let path = ForwardPath(label_from_u64(0b001_010));
+    #[cfg(feature="sfcp")]
+    let path = ForwardPath(label_from_u128(0b001_010));
+
+    node1.send_hello(path, pk2);
+
+    let to_self2 = node2.upkeep();
+    assert_eq!(to_self2.len(), 1);
+    let (handle, ref msgs) = to_self2[0];
+    assert_eq!(msgs.len(), 0);
+}

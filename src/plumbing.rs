@@ -80,18 +80,28 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 // If it is a CryptoAuth handshake Hello packet (ie. if someone is
                 // connecting to us), create a new session for this node.
                 let (handle, inner_packet) = self.session_manager.on_hello(handshake, switch_packet);
-                let inner_packet = DataPacket::new_from_raw(inner_packet)
-                    .expect("Could not decode data packet");
-                Some((handle, vec![inner_packet]))
+                if inner_packet.len() > 0 {
+                    let inner_packet = DataPacket::new_from_raw(inner_packet)
+                        .expect("Could not decode data packet");
+                    Some((handle, vec![inner_packet]))
+                }
+                else {
+                    Some((handle, vec![]))
+                }
             },
             Some(SwitchPayload::CryptoAuthKey(handshake)) => {
                 // If it is a CryptoAuth handshake Key packet (ie. if someone is
                 // replies to our connection attempt), find its session and
                 // update it.
                 let (handle, inner_packet) = self.session_manager.on_key(handshake, switch_packet).unwrap();
-                let inner_packet = DataPacket::new_from_raw(inner_packet)
-                    .expect("Could not decode data packet");
-                Some((handle, vec![inner_packet]))
+                if inner_packet.len() > 0 {
+                    let inner_packet = DataPacket::new_from_raw(inner_packet)
+                        .expect("Could not decode data packet");
+                    Some((handle, vec![inner_packet]))
+                }
+                else {
+                    Some((handle, vec![]))
+                }
             },
             Some(SwitchPayload::CryptoAuthData(handle, ca_message)) => {
                 // If it is a CryptoAuth data packet, first read the session
@@ -173,5 +183,10 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
             let to_self = self.dispatch(message, 0b001);
             assert!(to_self.is_none());
         }
+    }
+
+    pub fn send_hello(&mut self, path: ForwardPath, pk: PublicKey) {
+        let my_handle = self.session_manager.add_outgoing(path, pk);
+        self.upkeep2();
     }
 }
