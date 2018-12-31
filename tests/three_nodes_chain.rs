@@ -120,7 +120,7 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing, PublicKey
 
 
 #[test]
-fn switchctrl_ping_peer() {
+fn switchctrl_ping_path() {
     fcp_cryptoauth::init();
 
     let (_pk1, mut node1, _pk2, mut node2, _pk3, mut node3) = setup_nodes();
@@ -159,3 +159,37 @@ fn switchctrl_ping_peer() {
     assert_eq!(node3.pongs.as_ref().unwrap().len(), 0);
 }
 
+
+
+#[test]
+fn nodata_session_path() {
+    fcp_cryptoauth::init();
+
+    let (_pk1, mut node1, _pk2, mut node2, pk3, mut node3) = setup_nodes();
+
+    assert_eq!(node1.session_manager.upkeep().len(), 0);
+    assert_eq!(node2.session_manager.upkeep().len(), 0);
+
+    #[cfg(not(feature="sfcp"))]
+    let path = ForwardPath(label_from_u64(0b001_100_010));
+    #[cfg(feature="sfcp")]
+    let path = ForwardPath(label_from_u128(0b001_100_010));
+
+    node1.send_hello(path, pk3);
+
+    let to_self2 = node2.upkeep();
+    assert_eq!(to_self2.len(), 0);
+
+    let to_self3 = node3.upkeep();
+    assert_eq!(to_self3.len(), 1);
+    let (handle, ref msgs) = to_self3[0];
+    assert_eq!(msgs.len(), 0);
+
+    let to_self2 = node2.upkeep();
+    assert_eq!(to_self2.len(), 0);
+
+    let to_self1 = node1.upkeep();
+    assert_eq!(to_self1.len(), 1);
+    let (handle, ref msgs) = to_self1[0];
+    assert_eq!(msgs.len(), 0);
+}

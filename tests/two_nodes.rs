@@ -91,7 +91,7 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing) {
 
 
 #[test]
-fn switchctrl_ping_peer() {
+fn switchctrl_ping_path() {
     fcp_cryptoauth::init();
 
     let (_pk1, mut node1, _pk2, mut node2) = setup_nodes();
@@ -124,7 +124,7 @@ fn switchctrl_ping_peer() {
 
 
 #[test]
-fn routerctrl_ping_peer() {
+fn nodata_session_path() {
     fcp_cryptoauth::init();
 
     let (_pk1, mut node1, pk2, mut node2) = setup_nodes();
