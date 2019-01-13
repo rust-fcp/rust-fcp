@@ -15,7 +15,8 @@ pub fn new_from_raw_content(path: ForwardPath, content: Vec<u8>, handle: Option<
     match first_four_bytes {
         0 | 1 => {
             // If it is a CryptoAuth handshake Hello packet, send it as is.
-            SwitchPacket::new(path, SwitchPayload::CryptoAuthHello(content))
+            let payload = SwitchPayload::CryptoAuthHello(content);
+            SwitchPacket::new(path, payload)
         },
         2 | 3 => {
             // If it is a CryptoAuth handshake Key packet, send it as is.

@@ -8,7 +8,7 @@ use byteorder::ByteOrder;
 use packets::route::RoutePacket;
 
 /// https://github.com/cjdelisle/cjdns/blob/cjdns-v20/wire/ContentType.h#L18
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Payload {
     /// ContentType <= 255: it's mapped on IPv6's Next Header field. See
     /// https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
@@ -17,7 +17,7 @@ pub enum Payload {
     RoutePacket(RoutePacket),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataPacket {
     raw: Vec<u8>,
 }

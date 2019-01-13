@@ -181,4 +181,30 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
         let my_handle = self.session_manager.add_outgoing(Some(path), pk);
         self.upkeep2();
     }
+
+    pub fn send_content_to_path(&mut self, path: ForwardPath, pk: PublicKey,
+            ip6_next_header: u8, content: Vec<u8>, immediately: bool) {
+        let (their_handle, messages) = {
+            let session = self.session_manager.get_or_make_session_for_pk(pk);
+            let data_payload = DataPayload::Ip6Content(ip6_next_header, content);
+            let data_packet = DataPacket::new(DATAPACKET_VERSION, &data_payload);
+            let messages = if immediately {
+                session.conn.wrap_message_immediately(&data_packet.raw())
+            }
+            else {
+                session.conn.wrap_message(&data_packet.raw())
+            };
+            (session.their_handle(), messages)
+        };
+
+        for message in messages {
+            let switch_packet = new_from_raw_content(path, message, their_handle);
+            println!("{:?}", switch_packet);
+            self.dispatch(switch_packet, 0b001);
+        }
+    }
+
+    pub fn send_content(&mut self, ip6_content: &Ip6Content) {
+        unimplemented!("send_content");
+    }
 }

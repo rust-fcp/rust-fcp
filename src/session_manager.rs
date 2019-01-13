@@ -103,6 +103,25 @@ impl SessionManager {
         self.sessions.get_mut(&handle)
     }
 
+    pub fn get_session_for_pk(&mut self, pk: PublicKey) -> Option<&mut Session> {
+        for (handle, session) in self.sessions.iter_mut() {
+            if *session.conn.their_pk() == pk {
+                return Some(session)
+            }
+        }
+        None
+    }
+
+    pub fn get_or_make_session_for_pk(&mut self, pk: PublicKey) -> &mut Session {
+        if self.get_session_for_pk(pk).is_none() {
+            let handle = self.add_outgoing(None, pk);
+            self.sessions.get_mut(&handle).unwrap()
+        }
+        else {
+            self.get_session_for_pk(pk).unwrap()
+        }
+    }
+
     pub fn upkeep(&mut self) -> Vec<SwitchPacket> {
         let mut packets = Vec::new();
         for (_my_handle, ref mut session) in self.sessions.iter_mut() {
