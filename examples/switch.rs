@@ -101,6 +101,7 @@ impl UdpSwitch {
                 targets.push((*my_handle, session.path))
             }
             for (my_handle, path) in targets {
+                let path = path.unwrap();
                 self.random_send_switch_ping(my_handle, path);
                 self.random_send_getpeers(my_handle, path)
             }

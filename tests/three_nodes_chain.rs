@@ -160,7 +160,6 @@ fn switchctrl_ping_path() {
 }
 
 
-
 #[test]
 fn nodata_session_path() {
     fcp_cryptoauth::init();

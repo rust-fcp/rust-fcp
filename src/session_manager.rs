@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rand;
 use rand::Rng;
-use fcp_cryptoauth::{CAWrapper, PublicKey, SecretKey, Credentials};
+use fcp_cryptoauth::{CAWrapper, PublicKey, SecretKey, Credentials, peek_pk_key};
 
 use operation::{ForwardPath, BackwardPath};
 use packets::switch::SwitchPacket;
@@ -19,7 +19,7 @@ pub struct MySessionHandle(pub SessionHandle);
 pub struct TheirSessionHandle(pub SessionHandle);
 
 pub struct Session {
-    pub path: ForwardPath,
+    pub path: Option<ForwardPath>,
     pub conn: CAWrapper<()>,
 }
 
@@ -37,8 +37,8 @@ pub struct SessionManager {
     /// outer CryptoAuth sessions.
     pub sessions: HashMap<MySessionHandle, Session>,
 
-    /// Map from incoming paths to the session handle I use to decrypt their messages
-    pub path_to_my_handle: HashMap<BackwardPath, MySessionHandle>,
+    /// Map from peer public keys to the session handle I use to decrypt their messages
+    pub pk_to_my_handle: HashMap<PublicKey, MySessionHandle>,
 }
 
 impl SessionManager {
@@ -47,7 +47,7 @@ impl SessionManager {
             my_pk: my_pk,
             my_sk: my_sk,
             sessions: HashMap::new(),
-            path_to_my_handle: HashMap::new(),
+            pk_to_my_handle: HashMap::new(),
         }
     }
 
@@ -59,7 +59,7 @@ impl SessionManager {
             }
         }
     }
-    pub fn add_outgoing(&mut self, path: ForwardPath, node_pk: PublicKey) -> MySessionHandle {
+    pub fn add_outgoing(&mut self, path: Option<ForwardPath>, node_pk: PublicKey) -> MySessionHandle {
         let handle = self.gen_handle();
         let conn = CAWrapper::new_outgoing_connection(
                 self.my_pk.clone(), self.my_sk.clone(),
@@ -68,7 +68,7 @@ impl SessionManager {
                 None,
                 (),
                 Some((handle.0).0));
-        self.path_to_my_handle.insert(path.clone().reverse(), handle);
+        self.pk_to_my_handle.insert(node_pk, handle);
         self.sessions.insert(handle, Session { path: path, conn: conn });
         handle
     }
@@ -77,15 +77,16 @@ impl SessionManager {
         let handle = self.gen_handle();
         let (conn, message) = CAWrapper::new_incoming_connection(self.my_pk, self.my_sk.clone(), Credentials::None, None, Some((handle.0).0), packet).unwrap();
         let path = BackwardPath::from(switch_packet.label()).reverse();
-        self.sessions.insert(handle, Session { path: path, conn: conn });
+        self.sessions.insert(handle, Session { path: Some(path), conn: conn });
         (handle, message)
     }
 
     pub fn on_key(&mut self, packet: Vec<u8>, switch_packet: &SwitchPacket) -> (MySessionHandle, Vec<DataPacket>) {
-        // TODO: use pk instead of path to find the session.
-        let path = BackwardPath::from(switch_packet.label());
-        let my_handle = *self.path_to_my_handle.get(&path)
-            .expect("Got Key message from a path I never sent a Hello to.");
+        let pk: PublicKey = peek_pk_key(&packet[..]).expect("Invalid Key packet.");
+        let my_handle = *self.pk_to_my_handle.get(&pk)
+            .expect("Got Key message from a node I never sent a Hello to.");
+        let path = BackwardPath::from(switch_packet.label()).reverse();
+        self.sessions.get_mut(&my_handle).expect("Invalid handle").path = Some(path);
         (my_handle, self.unwrap_message(my_handle, packet))
     }
 
@@ -107,7 +108,9 @@ impl SessionManager {
         for (_my_handle, ref mut session) in self.sessions.iter_mut() {
             let their_handle = session.conn.peer_session_handle().map(SessionHandle).map(TheirSessionHandle);
             for ca_message in session.conn.upkeep() {
-                packets.push(new_from_raw_content(session.path, ca_message, their_handle));
+                if let Some(path) = session.path {
+                    packets.push(new_from_raw_content(path, ca_message, their_handle));
+                }
             }
         }
         packets

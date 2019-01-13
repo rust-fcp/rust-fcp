@@ -178,7 +178,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
     }
 
     pub fn send_hello(&mut self, path: ForwardPath, pk: PublicKey) {
-        let my_handle = self.session_manager.add_outgoing(path, pk);
+        let my_handle = self.session_manager.add_outgoing(Some(path), pk);
         self.upkeep2();
     }
 }
