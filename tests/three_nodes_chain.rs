@@ -9,6 +9,8 @@ use std::cell::RefCell;
 use fcp_cryptoauth::*;
 
 use fcp::packets::control::ControlPacket;
+use fcp::packets::data::DataPacket;
+use fcp::packets::data::Payload as DataPayload;
 use fcp::packets::switch::SwitchPacket;
 use fcp::packets::switch::Payload as SwitchPayload;
 use fcp::passive_switch::PassiveSwitch;
@@ -183,6 +185,42 @@ fn nodata_session_path() {
     assert_eq!(to_self3.len(), 1);
     let (handle, ref msgs) = to_self3[0];
     assert_eq!(msgs.len(), 0);
+
+    let to_self2 = node2.upkeep();
+    assert_eq!(to_self2.len(), 0);
+
+    let to_self1 = node1.upkeep();
+    assert_eq!(to_self1.len(), 1);
+    let (handle, ref msgs) = to_self1[0];
+    assert_eq!(msgs.len(), 0);
+}
+
+
+#[test]
+fn data_1_to_3_session_path() {
+    fcp_cryptoauth::init();
+
+    let (_pk1, mut node1, _pk2, mut node2, pk3, mut node3) = setup_nodes();
+
+    assert_eq!(node1.session_manager.upkeep().len(), 0);
+    assert_eq!(node2.session_manager.upkeep().len(), 0);
+    assert_eq!(node3.session_manager.upkeep().len(), 0);
+
+    #[cfg(not(feature="sfcp"))]
+    let path = ForwardPath(label_from_u64(0b001_100_010));
+    #[cfg(feature="sfcp")]
+    let path = ForwardPath(label_from_u128(0b001_100_010));
+
+    node1.send_content_to_path(path, pk3, 123, vec![1, 2, 3, 4, 5], true);
+
+    let to_self2 = node2.upkeep();
+    assert_eq!(to_self2.len(), 0);
+
+    let to_self3 = node3.upkeep();
+    assert_eq!(to_self3.len(), 1);
+    let (handle, ref msgs) = to_self3[0];
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs, &vec![DataPacket::new(1, &DataPayload::Ip6Content(123, vec![1, 2, 3, 4, 5]))]);
 
     let to_self2 = node2.upkeep();
     assert_eq!(to_self2.len(), 0);
