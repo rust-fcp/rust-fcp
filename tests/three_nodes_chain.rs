@@ -14,12 +14,11 @@ use fcp::packets::data::Payload as DataPayload;
 use fcp::packets::switch::SwitchPacket;
 use fcp::packets::switch::Payload as SwitchPayload;
 use fcp::passive_switch::PassiveSwitch;
-use fcp::operation::Director;
 use fcp::router::Router;
 use fcp::session_manager::SessionManager;
 use fcp::operation::ForwardPath;
 use fcp::mocks::MockNetworkAdapter;
-use fcp::plumbing::{Plumbing,NetworkAdapterTrait};
+use fcp::plumbing::Plumbing;
 
 #[cfg(not(feature="sfcp"))]
 use fcp::operation::label_from_u64;
@@ -144,7 +143,7 @@ fn switchctrl_ping_path() {
     assert_eq!(to_self2.len(), 0);
 
     let to_self3 = node3.upkeep();
-    assert_eq!(to_self2.len(), 0);
+    assert_eq!(to_self3.len(), 0);
 
     let to_self2 = node2.upkeep();
     assert_eq!(to_self2.len(), 0);
@@ -183,7 +182,7 @@ fn nodata_session_path() {
 
     let to_self3 = node3.upkeep();
     assert_eq!(to_self3.len(), 1);
-    let (handle, ref msgs) = to_self3[0];
+    let (_handle, ref msgs) = to_self3[0];
     assert_eq!(msgs.len(), 0);
 
     let to_self2 = node2.upkeep();
@@ -191,7 +190,7 @@ fn nodata_session_path() {
 
     let to_self1 = node1.upkeep();
     assert_eq!(to_self1.len(), 1);
-    let (handle, ref msgs) = to_self1[0];
+    let (_handle, ref msgs) = to_self1[0];
     assert_eq!(msgs.len(), 0);
 }
 
@@ -218,7 +217,7 @@ fn data_1_to_3_session_path() {
 
     let to_self3 = node3.upkeep();
     assert_eq!(to_self3.len(), 1);
-    let (handle, ref msgs) = to_self3[0];
+    let (_handle, ref msgs) = to_self3[0];
     assert_eq!(msgs.len(), 1);
     assert_eq!(msgs, &vec![DataPacket::new(1, &DataPayload::Ip6Content(123, vec![1, 2, 3, 4, 5]))]);
 
@@ -227,6 +226,6 @@ fn data_1_to_3_session_path() {
 
     let to_self1 = node1.upkeep();
     assert_eq!(to_self1.len(), 1);
-    let (handle, ref msgs) = to_self1[0];
+    let (_handle, ref msgs) = to_self1[0];
     assert_eq!(msgs.len(), 0);
 }
