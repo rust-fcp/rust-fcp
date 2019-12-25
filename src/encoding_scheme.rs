@@ -44,7 +44,12 @@ impl IntoIterator for EncodingScheme {
     type IntoIter = EncodingSchemeIterator;
 
     fn into_iter(self) -> EncodingSchemeIterator {
-        EncodingSchemeIterator { bytes: self.bytes, window: 0, bits_in_window: 0, bytes_offset: 0 }
+        EncodingSchemeIterator {
+            bytes: self.bytes,
+            window: 0,
+            bits_in_window: 0,
+            bytes_offset: 0,
+        }
     }
 }
 
@@ -63,7 +68,7 @@ impl Iterator for EncodingSchemeIterator {
 
     fn next(&mut self) -> Option<EncodingSchemeForm> {
         // Load new bytes in the window, so it is larger than any possible form
-        while self.bits_in_window < 5+5+0b11111 {
+        while self.bits_in_window < 5 + 5 + 0b11111 {
             let byte = *self.bytes.get(self.bytes_offset).unwrap_or(&0);
             self.window = self.window + ((byte as u64) << self.bits_in_window);
             self.bytes_offset += 1;
@@ -72,9 +77,8 @@ impl Iterator for EncodingSchemeIterator {
 
         if self.window == 0 {
             None
-        }
-        else {
-            assert!(self.bytes_offset <= self.bytes.len()+(5+5+0b11111)/8);
+        } else {
+            assert!(self.bytes_offset <= self.bytes.len() + (5 + 5 + 0b11111) / 8);
             let prefix_length = self.window as u8 & 0b11111;
             self.window >>= 5;
             self.bits_in_window -= 5;
@@ -83,18 +87,22 @@ impl Iterator for EncodingSchemeIterator {
             self.window >>= 5;
             self.bits_in_window -= 5;
 
-            let prefix_mask = (0b1 << prefix_length) -1; // mask for the prefix_length last digits
+            let prefix_mask = (0b1 << prefix_length) - 1; // mask for the prefix_length last digits
             let prefix = self.window & prefix_mask;
             self.window >>= prefix_length;
             self.bits_in_window -= prefix_length;
 
-            Some(EncodingSchemeForm { prefix: prefix, bit_count: bit_count, prefix_length: prefix_length })
+            Some(EncodingSchemeForm {
+                prefix: prefix,
+                bit_count: bit_count,
+                prefix_length: prefix_length,
+            })
         }
     }
 }
 
 impl<'a> FromIterator<&'a EncodingSchemeForm> for EncodingScheme {
-    fn from_iter<T: IntoIterator<Item=&'a EncodingSchemeForm>>(forms: T) -> Self {
+    fn from_iter<T: IntoIterator<Item = &'a EncodingSchemeForm>>(forms: T) -> Self {
         let mut bytes = Vec::<u8>::new();
         let mut window = 0u64;
         let mut bits_in_window = 0u8;
@@ -103,11 +111,11 @@ impl<'a> FromIterator<&'a EncodingSchemeForm> for EncodingScheme {
             assert!(form.bit_count <= 0b11111);
             assert!(form.prefix < (1 << form.prefix_length));
 
-            window += (form.prefix as u64) << (5+5+bits_in_window);
-            window += (form.bit_count as u64) << (5+bits_in_window);
+            window += (form.prefix as u64) << (5 + 5 + bits_in_window);
+            window += (form.bit_count as u64) << (5 + bits_in_window);
             window += (form.prefix_length as u64) << (bits_in_window);
 
-            bits_in_window += 5+5+form.prefix_length;
+            bits_in_window += 5 + 5 + form.prefix_length;
 
             while bits_in_window >= 8 {
                 bytes.push((window & 0b11111111) as u8);
@@ -128,18 +136,35 @@ impl<'a> FromIterator<&'a EncodingSchemeForm> for EncodingScheme {
 
 #[cfg(test)]
 mod tests {
-    use std::iter::FromIterator;
     use super::*;
+    use std::iter::FromIterator;
 
     #[test]
     fn test_trivial() {
         let encoding = vec![0b011_00000, 0b00];
-        let forms = vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }];
+        let forms = vec![EncodingSchemeForm {
+            prefix: 0,
+            bit_count: 3,
+            prefix_length: 0,
+        }];
 
         assert_eq!(EncodingScheme::new(encoding.clone()).into_bytes(), encoding);
-        assert_eq!(EncodingScheme::from_iter(forms.iter()).into_bytes(), encoding);
-        assert_eq!(EncodingScheme::new(encoding.clone()).into_iter().collect::<Vec<_>>(), forms);
-        assert_eq!(EncodingScheme::from_iter(forms.iter()).into_iter().collect::<Vec<_>>(), forms);
+        assert_eq!(
+            EncodingScheme::from_iter(forms.iter()).into_bytes(),
+            encoding
+        );
+        assert_eq!(
+            EncodingScheme::new(encoding.clone())
+                .into_iter()
+                .collect::<Vec<_>>(),
+            forms
+        );
+        assert_eq!(
+            EncodingScheme::from_iter(forms.iter())
+                .into_iter()
+                .collect::<Vec<_>>(),
+            forms
+        );
     }
 
     /// From https://github.com/cjdelisle/cjdns/blob/cjdns-v18/switch/test/EncodingScheme_test.c#L121-L158
@@ -150,23 +175,36 @@ mod tests {
             EncodingSchemeForm {
                 prefix_length: 15,
                 bit_count: 2,
-                prefix: ((1<<15)-1) ^ (1<<1),
+                prefix: ((1 << 15) - 1) ^ (1 << 1),
             },
             EncodingSchemeForm {
                 prefix_length: 20,
                 bit_count: 4,
-                prefix: ((1<<20)-1) ^ (1<<2),
+                prefix: ((1 << 20) - 1) ^ (1 << 2),
             },
             EncodingSchemeForm {
                 prefix_length: 18,
                 bit_count: 8,
-                prefix: ((1<<18)-1) ^ (1<<3),
-            }
+                prefix: ((1 << 18) - 1) ^ (1 << 3),
+            },
         ];
 
         assert_eq!(EncodingScheme::new(encoding.clone()).into_bytes(), encoding);
-        assert_eq!(EncodingScheme::from_iter(forms.iter()).into_bytes(), encoding);
-        assert_eq!(EncodingScheme::new(encoding.clone()).into_iter().collect::<Vec<_>>(), forms);
-        assert_eq!(EncodingScheme::from_iter(forms.iter()).into_iter().collect::<Vec<_>>(), forms);
+        assert_eq!(
+            EncodingScheme::from_iter(forms.iter()).into_bytes(),
+            encoding
+        );
+        assert_eq!(
+            EncodingScheme::new(encoding.clone())
+                .into_iter()
+                .collect::<Vec<_>>(),
+            forms
+        );
+        assert_eq!(
+            EncodingScheme::from_iter(forms.iter())
+                .into_iter()
+                .collect::<Vec<_>>(),
+            forms
+        );
     }
 }

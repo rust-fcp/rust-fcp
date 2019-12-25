@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
-use fcp_cryptoauth::{PublicKey, publickey_to_ipv6addr};
+use fcp_cryptoauth::{publickey_to_ipv6addr, PublicKey};
 
-use packets::route::{RoutePacket, RoutePacketBuilder, NodeData};
 use encoding_scheme::{EncodingScheme, EncodingSchemeForm};
+use packets::route::{NodeData, RoutePacket, RoutePacketBuilder};
 
-use operation::{ForwardPath, BackwardPath, Director};
-use node_store::{NodeStore, GetNodeResult};
 use node::{Address, Node};
+use node_store::{GetNodeResult, NodeStore};
+use operation::{BackwardPath, Director, ForwardPath};
 use plumbing::RouterTrait;
 use session_manager::MySessionHandle;
 
@@ -41,19 +41,30 @@ impl Router {
 
     /// Wrapper for `NodeStore::get_node` that returns RoutePackets that
     /// should be sent in order to fetch the target node.
-    pub fn get_node(&self, target: &Address, nb_closest: usize) -> (Option<&Node>, Vec<(&Node, RoutePacket)>) {
+    pub fn get_node(
+        &self,
+        target: &Address,
+        nb_closest: usize,
+    ) -> (Option<&Node>, Vec<(&Node, RoutePacket)>) {
         match self.node_store.get_node(target, nb_closest) {
             GetNodeResult::FoundNode(node) => (Some(node), Vec::new()),
             GetNodeResult::ClosestNodes(nodes) => {
                 // Ask each of the closest nodes about the target
                 let requests = nodes.iter().map(|&(ref _addr, ref node)| {
-                    let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
+                    let encoding_scheme = EncodingScheme::from_iter(
+                        vec![EncodingSchemeForm {
+                            prefix: 0,
+                            bit_count: 3,
+                            prefix_length: 0,
+                        }]
+                        .iter(),
+                    );
                     let packet = RoutePacketBuilder::new(PROTOCOL_VERSION, b"blah".to_vec())
-                            .query("fn".to_owned())
-                            .target_address(target.bytes().to_vec())
-                            .encoding_index(0)
-                            .encoding_scheme(encoding_scheme)
-                            .finalize();
+                        .query("fn".to_owned())
+                        .target_address(target.bytes().to_vec())
+                        .encoding_index(0)
+                        .encoding_scheme(encoding_scheme)
+                        .finalize();
                     (*node, packet)
                 });
                 let requests = requests.collect();
@@ -91,18 +102,31 @@ impl Router {
         }
         // TODO: only send the peers closest to the specified target address.
 
-        let encoding_scheme = EncodingScheme::from_iter(vec![EncodingSchemeForm { prefix: 0, bit_count: 3, prefix_length: 0 }].iter());
+        let encoding_scheme = EncodingScheme::from_iter(
+            vec![EncodingSchemeForm {
+                prefix: 0,
+                bit_count: 3,
+                prefix_length: 0,
+            }]
+            .iter(),
+        );
         let response = RoutePacketBuilder::new(18, packet.transaction_id.clone())
-                .nodes_vec(nodes)
-                .encoding_index(0) // This switch uses only one encoding scheme
-                .encoding_scheme(encoding_scheme)
-                .finalize();
+            .nodes_vec(nodes)
+            .encoding_index(0) // This switch uses only one encoding scheme
+            .encoding_scheme(encoding_scheme)
+            .finalize();
         vec![response]
     }
 }
 
 impl RouterTrait for Router {
-    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, _handle: MySessionHandle, pk: PublicKey) -> Vec<RoutePacket> {
+    fn on_route_packet(
+        &mut self,
+        packet: &RoutePacket,
+        path: BackwardPath,
+        _handle: MySessionHandle,
+        pk: PublicKey,
+    ) -> Vec<RoutePacket> {
         let responses = match packet.query.as_ref().map(String::as_ref) {
             Some("gp") => self.on_getpeers(packet, &pk),
             _ => Vec::new(),
@@ -113,4 +137,3 @@ impl RouterTrait for Router {
         responses
     }
 }
-

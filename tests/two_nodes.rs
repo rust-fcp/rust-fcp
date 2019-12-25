@@ -1,37 +1,43 @@
 extern crate fcp;
 extern crate fcp_cryptoauth;
 
-use std::collections::VecDeque;
-use std::collections::HashMap;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::rc::Rc;
 
 use fcp_cryptoauth::*;
 
+use fcp::mocks::MockNetworkAdapter;
+use fcp::operation::ForwardPath;
 use fcp::packets::control::ControlPacket;
 use fcp::packets::data::DataPacket;
 use fcp::packets::data::Payload as DataPayload;
-use fcp::packets::switch::SwitchPacket;
 use fcp::packets::switch::Payload as SwitchPayload;
+use fcp::packets::switch::SwitchPacket;
 use fcp::passive_switch::PassiveSwitch;
+use fcp::plumbing::Plumbing;
 use fcp::router::Router;
 use fcp::session_manager::SessionManager;
-use fcp::operation::ForwardPath;
-use fcp::mocks::MockNetworkAdapter;
-use fcp::plumbing::Plumbing;
 
-#[cfg(not(feature="sfcp"))]
-use fcp::operation::label_from_u64;
-#[cfg(feature="sfcp")]
+#[cfg(feature = "sfcp")]
 use fcp::operation::label_from_u128;
+#[cfg(not(feature = "sfcp"))]
+use fcp::operation::label_from_u64;
 
 pub type MockPlumbing = Plumbing<Router, MockNetworkAdapter>;
 
 fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing) {
-    let sk1 = SecretKey::from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e").unwrap();
-    let pk1 = PublicKey::from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
-    let sk2 = SecretKey::from_hex(b"824736a667d85582747fde7184201b17d0e655a7a3d9e0e3e617e7ca33270da8").unwrap();
-    let pk2 = PublicKey::from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
+    let sk1 =
+        SecretKey::from_hex(b"ac3e53b518e68449692b0b2f2926ef2fdc1eac5b9dbd10a48114263b8c8ed12e")
+            .unwrap();
+    let pk1 =
+        PublicKey::from_base32(b"2wrpv8p4tjwm532sjxcbqzkp7kdwfwzzbg7g0n5l6g3s8df4kvv0.k").unwrap();
+    let sk2 =
+        SecretKey::from_hex(b"824736a667d85582747fde7184201b17d0e655a7a3d9e0e3e617e7ca33270da8")
+            .unwrap();
+    let pk2 =
+        PublicKey::from_base32(b"2j1xz5k5y1xwz7kcczc4565jurhp8bbz1lqfu9kljw36p3nmb050.k").unwrap();
     let login = "node2_login".to_owned().into_bytes();
     let password = "node2_pass".to_owned().into_bytes();
     let credentials = Credentials::LoginPassword {
@@ -90,7 +96,6 @@ fn setup_nodes() -> (PublicKey, MockPlumbing, PublicKey, MockPlumbing) {
     (pk1, node1, pk2, node2)
 }
 
-
 #[test]
 fn switchctrl_ping_path() {
     fcp_cryptoauth::init();
@@ -100,12 +105,15 @@ fn switchctrl_ping_path() {
     assert_eq!(node1.session_manager.upkeep().len(), 0);
     assert_eq!(node2.session_manager.upkeep().len(), 0);
 
-    #[cfg(not(feature="sfcp"))]
+    #[cfg(not(feature = "sfcp"))]
     let path = ForwardPath(label_from_u64(0b001_010));
-    #[cfg(feature="sfcp")]
+    #[cfg(feature = "sfcp")]
     let path = ForwardPath(label_from_u128(0b001_010));
 
-    let ctrl_pkt = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
+    let ctrl_pkt = ControlPacket::Ping {
+        version: 18,
+        opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8],
+    };
     let switch_pkt = SwitchPacket::new(path, SwitchPayload::Control(ctrl_pkt));
     let to_self1 = node1.dispatch(switch_pkt, 0b001);
     assert!(to_self1.is_none());
@@ -123,7 +131,6 @@ fn switchctrl_ping_path() {
     assert_eq!(node2.pongs.as_ref().unwrap().len(), 0);
 }
 
-
 #[test]
 fn nodata_session_path() {
     fcp_cryptoauth::init();
@@ -133,9 +140,9 @@ fn nodata_session_path() {
     assert_eq!(node1.session_manager.upkeep().len(), 0);
     assert_eq!(node2.session_manager.upkeep().len(), 0);
 
-    #[cfg(not(feature="sfcp"))]
+    #[cfg(not(feature = "sfcp"))]
     let path = ForwardPath(label_from_u64(0b001_010));
-    #[cfg(feature="sfcp")]
+    #[cfg(feature = "sfcp")]
     let path = ForwardPath(label_from_u128(0b001_010));
 
     node1.send_hello(path, pk2);
@@ -150,7 +157,6 @@ fn nodata_session_path() {
     let (_handle, ref msgs) = to_self1[0];
     assert_eq!(msgs.len(), 0);
 }
-
 
 #[test]
 fn data_1_to_2_session_path() {
@@ -161,9 +167,9 @@ fn data_1_to_2_session_path() {
     assert_eq!(node1.session_manager.upkeep().len(), 0);
     assert_eq!(node2.session_manager.upkeep().len(), 0);
 
-    #[cfg(not(feature="sfcp"))]
+    #[cfg(not(feature = "sfcp"))]
     let path = ForwardPath(label_from_u64(0b001_010));
-    #[cfg(feature="sfcp")]
+    #[cfg(feature = "sfcp")]
     let path = ForwardPath(label_from_u128(0b001_010));
 
     node1.send_content_to_path(path, pk2, 123, vec![1, 2, 3, 4, 5], true);
@@ -172,14 +178,19 @@ fn data_1_to_2_session_path() {
     assert_eq!(to_self2.len(), 1);
     let (_handle, ref msgs) = to_self2[0];
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs, &vec![DataPacket::new(1, &DataPayload::Ip6Content(123, vec![1, 2, 3, 4, 5]))]);
+    assert_eq!(
+        msgs,
+        &vec![DataPacket::new(
+            1,
+            &DataPayload::Ip6Content(123, vec![1, 2, 3, 4, 5])
+        )]
+    );
 
     let to_self1 = node1.upkeep();
     assert_eq!(to_self1.len(), 1);
     let (_handle, ref msgs) = to_self1[0];
     assert_eq!(msgs.len(), 0);
 }
-
 
 #[test]
 fn data_2_to_1_session_path() {
@@ -190,9 +201,9 @@ fn data_2_to_1_session_path() {
     assert_eq!(node1.session_manager.upkeep().len(), 0);
     assert_eq!(node2.session_manager.upkeep().len(), 0);
 
-    #[cfg(not(feature="sfcp"))]
+    #[cfg(not(feature = "sfcp"))]
     let path = ForwardPath(label_from_u64(0b001_010));
-    #[cfg(feature="sfcp")]
+    #[cfg(feature = "sfcp")]
     let path = ForwardPath(label_from_u128(0b001_010));
 
     node1.send_hello(path, pk2);
@@ -207,9 +218,9 @@ fn data_2_to_1_session_path() {
     let (_handle, ref msgs) = to_self1[0];
     assert_eq!(msgs.len(), 0);
 
-    #[cfg(not(feature="sfcp"))]
+    #[cfg(not(feature = "sfcp"))]
     let path2 = ForwardPath(label_from_u64(0b001_011));
-    #[cfg(feature="sfcp")]
+    #[cfg(feature = "sfcp")]
     let path2 = ForwardPath(label_from_u128(0b001_011));
 
     node2.send_content_to_path(path2, pk1, 123, vec![1, 2, 3, 4, 5], true);
@@ -218,5 +229,11 @@ fn data_2_to_1_session_path() {
     assert_eq!(to_self1.len(), 1);
     let (_handle, ref msgs) = to_self1[0];
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs, &vec![DataPacket::new(1, &DataPayload::Ip6Content(123, vec![1, 2, 3, 4, 5]))]);
+    assert_eq!(
+        msgs,
+        &vec![DataPacket::new(
+            1,
+            &DataPayload::Ip6Content(123, vec![1, 2, 3, 4, 5])
+        )]
+    );
 }

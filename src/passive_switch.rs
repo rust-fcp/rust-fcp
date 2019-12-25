@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use fcp_cryptoauth::{PublicKey, SecretKey, Credentials};
+use fcp_cryptoauth::{Credentials, PublicKey, SecretKey};
 
-use operation::{RoutingDecision, Director};
+use operation::{Director, RoutingDecision};
 use packets::switch::SwitchPacket;
 
 /// A switch that only forwards packets.
@@ -21,12 +21,16 @@ pub struct PassiveSwitch {
 
 impl PassiveSwitch {
     /// Instanciates a switch.
-    pub fn new(my_pk: PublicKey, my_sk: SecretKey, allowed_peers: HashMap<Credentials, String>) -> PassiveSwitch {
+    pub fn new(
+        my_pk: PublicKey,
+        my_sk: SecretKey,
+        allowed_peers: HashMap<Credentials, String>,
+    ) -> PassiveSwitch {
         PassiveSwitch {
             my_pk: my_pk,
             my_sk: my_sk,
             allowed_peers: allowed_peers,
-            }
+        }
     }
 
     /// Takes a 3-bit interface id, and reverse its bits.
@@ -51,10 +55,14 @@ impl PassiveSwitch {
     /// `(Some(packet), None)`.
     /// Else, returns `(None, Some((director, switch_packets)))`; `switch_packet` is
     /// expected to be sent to a NetworkAdapter.
-    pub fn forward(&self, mut packet: SwitchPacket, from_interface: Director)
-            -> (Option<SwitchPacket>, Option<(Director, SwitchPacket)>) {
+    pub fn forward(
+        &self,
+        mut packet: SwitchPacket,
+        from_interface: Director,
+    ) -> (Option<SwitchPacket>, Option<(Director, SwitchPacket)>) {
         // Logically advance the packet through an interface.
-        let routing_decision = packet.switch(3, &(self.reverse_iface_id(from_interface) as Director));
+        let routing_decision =
+            packet.switch(3, &(self.reverse_iface_id(from_interface) as Director));
         match routing_decision {
             RoutingDecision::SelfInterface(_) => {
                 // Packet is sent to myself
@@ -62,7 +70,7 @@ impl PassiveSwitch {
             }
             RoutingDecision::Forward(director) => {
                 // Packet is sent to a peer.
-                return (None, Some((director, packet)))
+                return (None, Some((director, packet)));
             }
         }
     }

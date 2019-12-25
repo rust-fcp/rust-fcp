@@ -3,10 +3,7 @@
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(Eq)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ErrorType {
     /// No error, everything is ok.
     None,
@@ -55,7 +52,7 @@ impl ErrorType {
             ErrorType::MalformedAddress => 1,
             ErrorType::Flood => 2,
             ErrorType::LinkLimitExceeded => 3,
-            ErrorType::OversizeMessage => 4, 
+            ErrorType::OversizeMessage => 4,
             ErrorType::UndersizeMessage => 5,
             ErrorType::Authentication => 6,
             ErrorType::Invalid => 7,
@@ -71,16 +68,30 @@ const PONG_MAGIC: u32 = 0x9d74e35b;
 const KEYPING_MAGIC: u32 = 0x01234567;
 const KEYPONG_MAGIC: u32 = 0x89abcdef;
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(Eq)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ControlPacket {
-    Error { type_: ErrorType, cause: Vec<u8> },
-    Ping { version: u32, opaque_data: Vec<u8> },
-    Pong { version: u32, opaque_data: Vec<u8> },
-    KeyPing { version: u32, opaque_data: Vec<u8>, key: Vec<u8> },
-    KeyPong { version: u32, opaque_data: Vec<u8>, key: Vec<u8> },
+    Error {
+        type_: ErrorType,
+        cause: Vec<u8>,
+    },
+    Ping {
+        version: u32,
+        opaque_data: Vec<u8>,
+    },
+    Pong {
+        version: u32,
+        opaque_data: Vec<u8>,
+    },
+    KeyPing {
+        version: u32,
+        opaque_data: Vec<u8>,
+        key: Vec<u8>,
+    },
+    KeyPong {
+        version: u32,
+        opaque_data: Vec<u8>,
+        key: Vec<u8>,
+    },
 }
 
 impl ControlPacket {
@@ -89,25 +100,35 @@ impl ControlPacket {
         let checksum = BigEndian::read_u16(&raw[0..2]); // TODO: check checksum
         let type_ = BigEndian::read_u16(&raw[2..4]);
         match type_ {
-            2 => if raw.len() < 8 { return None },
-            3 | 4 => if raw.len() < 18 { return None }, // PING or PONG
-            5 | 6 => if raw.len() < 52 { return None }, // KEYPING or KEYPONG
-            _ => return None // unknown type
+            2 => {
+                if raw.len() < 8 {
+                    return None;
+                }
+            }
+            3 | 4 => {
+                if raw.len() < 18 {
+                    return None;
+                }
+            } // PING or PONG
+            5 | 6 => {
+                if raw.len() < 52 {
+                    return None;
+                }
+            } // KEYPING or KEYPONG
+            _ => return None, // unknown type
         }
 
         let res = match type_ {
             2 => {
                 let type_number = BigEndian::read_u32(&raw[4..8]);
                 match ErrorType::new(type_number) {
-                    Some(type_) => {
-                        ControlPacket::Error {
-                            type_: type_,
-                            cause: raw[8..].to_vec(),
-                        }
-                    }
+                    Some(type_) => ControlPacket::Error {
+                        type_: type_,
+                        cause: raw[8..].to_vec(),
+                    },
                     None => return None,
                 }
-            },
+            }
             3 => {
                 let magic = BigEndian::read_u32(&raw[4..8]);
                 let version = BigEndian::read_u32(&raw[8..12]);
@@ -117,7 +138,7 @@ impl ControlPacket {
                     version: version,
                     opaque_data: opaque_data,
                 }
-            },
+            }
             4 => {
                 let magic = BigEndian::read_u32(&raw[4..8]);
                 let version = BigEndian::read_u32(&raw[8..12]);
@@ -127,7 +148,7 @@ impl ControlPacket {
                     version: version,
                     opaque_data: opaque_data,
                 }
-            },
+            }
             5 => {
                 let magic = BigEndian::read_u32(&raw[4..8]);
                 let version = BigEndian::read_u32(&raw[8..12]);
@@ -138,7 +159,7 @@ impl ControlPacket {
                     opaque_data: opaque_data,
                     key: raw[12..56].to_vec(),
                 }
-            },
+            }
             6 => {
                 let magic = BigEndian::read_u32(&raw[4..8]);
                 let version = BigEndian::read_u32(&raw[8..12]);
@@ -149,8 +170,8 @@ impl ControlPacket {
                     opaque_data: opaque_data,
                     key: raw[12..56].to_vec(),
                 }
-            },
-            _ => panic!("The impossible happened.")
+            }
+            _ => panic!("The impossible happened."),
         };
         Some(res)
     }
@@ -160,10 +181,9 @@ impl ControlPacket {
         let length = raw.len();
         let mut i = 0;
         while i < length {
-            if i+1 < length {
-                sum += ((raw[i] as u32) << 8) + (raw[i+1] as u32);
-            }
-            else {
+            if i + 1 < length {
+                sum += ((raw[i] as u32) << 8) + (raw[i + 1] as u32);
+            } else {
                 sum += (raw[i] as u32) << 8;
             }
             if sum & 0x80000000 != 0 {
@@ -182,26 +202,39 @@ impl ControlPacket {
     pub fn encode(&self) -> Vec<u8> {
         let mut buf = vec![0; 8];
         match *self {
-            ControlPacket::Error { ref type_, ref cause } => {
+            ControlPacket::Error {
+                ref type_,
+                ref cause,
+            } => {
                 buf[3] = 2;
                 BigEndian::write_u32(&mut buf[4..8], type_.type_number());
                 buf.extend_from_slice(cause);
-            },
-            ControlPacket::Ping { ref version, ref opaque_data } => {
+            }
+            ControlPacket::Ping {
+                ref version,
+                ref opaque_data,
+            } => {
                 buf[3] = 3;
                 BigEndian::write_u32(&mut buf[4..8], PING_MAGIC);
                 buf.extend_from_slice(&vec![0; 4]);
                 BigEndian::write_u32(&mut buf[8..12], *version);
                 buf.extend_from_slice(opaque_data);
             }
-            ControlPacket::Pong { ref version, ref opaque_data } => {
+            ControlPacket::Pong {
+                ref version,
+                ref opaque_data,
+            } => {
                 buf[3] = 4;
                 BigEndian::write_u32(&mut buf[4..8], PONG_MAGIC);
                 buf.extend_from_slice(&vec![0; 4]);
                 BigEndian::write_u32(&mut buf[8..12], *version);
                 buf.extend_from_slice(opaque_data);
             }
-            ControlPacket::KeyPing { ref version, ref opaque_data, ref key } => {
+            ControlPacket::KeyPing {
+                ref version,
+                ref opaque_data,
+                ref key,
+            } => {
                 buf[3] = 5;
                 BigEndian::write_u32(&mut buf[4..8], KEYPING_MAGIC);
                 buf.extend_from_slice(&vec![0; 4]);
@@ -209,7 +242,11 @@ impl ControlPacket {
                 buf.extend_from_slice(key);
                 buf.extend_from_slice(opaque_data);
             }
-            ControlPacket::KeyPong { ref version, ref opaque_data, ref key } => {
+            ControlPacket::KeyPong {
+                ref version,
+                ref opaque_data,
+                ref key,
+            } => {
                 buf[3] = 6;
                 BigEndian::write_u32(&mut buf[4..8], KEYPONG_MAGIC);
                 buf.extend_from_slice(&vec![0; 4]);
@@ -234,7 +271,10 @@ mod test {
     #[test]
     fn ping() {
         let raw = Vec::from_hex("a2e5000309f91102000000124d160b1eee2929e12e19a3b1").unwrap();
-        let msg = ControlPacket::Ping { version: 18, opaque_data: Vec::from_hex("4d160b1eee2929e12e19a3b1").unwrap() };
+        let msg = ControlPacket::Ping {
+            version: 18,
+            opaque_data: Vec::from_hex("4d160b1eee2929e12e19a3b1").unwrap(),
+        };
         assert_eq!(msg.encode(), raw);
         assert_eq!(ControlPacket::decode(&raw), Some(msg));
     }
@@ -242,7 +282,10 @@ mod test {
     #[test]
     fn pong() {
         let raw = Vec::from_hex("497400049d74e35b0000001280534c66df69e44b496d5bc8").unwrap();
-        let msg = ControlPacket::Pong { version: 18, opaque_data: Vec::from_hex("80534c66df69e44b496d5bc8").unwrap() };
+        let msg = ControlPacket::Pong {
+            version: 18,
+            opaque_data: Vec::from_hex("80534c66df69e44b496d5bc8").unwrap(),
+        };
         assert_eq!(msg.encode(), raw);
         assert_eq!(ControlPacket::decode(&raw), Some(msg));
     }
@@ -251,8 +294,15 @@ mod test {
     fn keyping() {
         use fcp_cryptoauth::keys::decode_base32;
         let raw = Vec::from_hex("994b00050123456700000012a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f02e29842b42aedb6bce2ead3").unwrap();
-        let key = decode_base32(b"3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu740k3m22fplqvqwpspy93").unwrap();
-        let msg = ControlPacket::KeyPing { version: 18, opaque_data: vec![], key: key };
+        let key = decode_base32(
+            b"3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu740k3m22fplqvqwpspy93",
+        )
+        .unwrap();
+        let msg = ControlPacket::KeyPing {
+            version: 18,
+            opaque_data: vec![],
+            key: key,
+        };
         assert_eq!(msg.encode(), raw);
         assert_eq!(ControlPacket::decode(&raw), Some(msg));
     }
@@ -261,8 +311,15 @@ mod test {
     fn keypong() {
         use fcp_cryptoauth::keys::decode_base32;
         let raw = Vec::from_hex("3b96000689abcdef000000126bd2e8e50faca3d987623d6a043c17c0d9e9004e145f8dd90615d34edbb36d6a02e29842b42aedb6bce2ead3").unwrap();
-        let key = decode_base32(b"cmnkylz1dx8mx3bdxku80yw20gqmg0s9nsrusdv0psnxnfhqfmu40k3m22fplqvqwpspy93").unwrap();
-        let msg = ControlPacket::KeyPong { version: 18, opaque_data: vec![], key: key };
+        let key = decode_base32(
+            b"cmnkylz1dx8mx3bdxku80yw20gqmg0s9nsrusdv0psnxnfhqfmu40k3m22fplqvqwpspy93",
+        )
+        .unwrap();
+        let msg = ControlPacket::KeyPong {
+            version: 18,
+            opaque_data: vec![],
+            key: key,
+        };
         assert_eq!(msg.encode(), raw);
         assert_eq!(ControlPacket::decode(&raw), Some(msg));
     }

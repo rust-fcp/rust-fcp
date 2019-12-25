@@ -46,12 +46,12 @@ impl NodeStore {
     /// queried about the searched node.
     pub fn get_node(&self, target: &Address, nb_closest: usize) -> GetNodeResult {
         let closest_nodes = self.find_closest_nodes(target, nb_closest);
-        match closest_nodes.clone().get(0) { // TODO: do not clone
+        match closest_nodes.clone().get(0) {
+            // TODO: do not clone
             Some(&(ref closest_addr, ref closest_node)) => {
                 if closest_addr == target {
                     GetNodeResult::FoundNode(closest_node)
-                }
-                else {
+                } else {
                     GetNodeResult::ClosestNodes(closest_nodes)
                 }
             }
@@ -63,19 +63,30 @@ impl NodeStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv6Addr;
-    use std::str::FromStr;
     use node::Address;
     use node::Node;
     use operation::ForwardPath;
+    use std::net::Ipv6Addr;
+    use std::str::FromStr;
 
     #[test]
-    #[cfg(not(feature="sfcp"))]
+    #[cfg(not(feature = "sfcp"))]
     fn test_get_one_node() {
-        let mut ns = NodeStore::new(Address::from(Ipv6Addr::from_str("fc8f:a188:1b5:4de9:b0cb:5729:23a1:60f9").unwrap()));
-        let addr = Address::from(Ipv6Addr::from_str("fc7c:8316:ec7d:1308:d3c2:6db7:5ad9:6ebc").unwrap());
-        let target = Address::from(Ipv6Addr::from_str("fcb9:326d:37d5:c57b:7ee5:28b5:7aa5:525").unwrap());
-        let node = Node::new([14, 212, 108, 34, 167, 28, 34, 202, 98, 134, 15, 159, 58, 151, 12, 228, 58, 163, 181, 163, 40, 102,  66, 125, 212, 44, 203, 100, 174, 56, 120, 61], ForwardPath([0, 0, 0, 0, 0, 0, 0, 11]), 17);
+        let mut ns = NodeStore::new(Address::from(
+            Ipv6Addr::from_str("fc8f:a188:1b5:4de9:b0cb:5729:23a1:60f9").unwrap(),
+        ));
+        let addr =
+            Address::from(Ipv6Addr::from_str("fc7c:8316:ec7d:1308:d3c2:6db7:5ad9:6ebc").unwrap());
+        let target =
+            Address::from(Ipv6Addr::from_str("fcb9:326d:37d5:c57b:7ee5:28b5:7aa5:525").unwrap());
+        let node = Node::new(
+            [
+                14, 212, 108, 34, 167, 28, 34, 202, 98, 134, 15, 159, 58, 151, 12, 228, 58, 163,
+                181, 163, 40, 102, 66, 125, 212, 44, 203, 100, 174, 56, 120, 61,
+            ],
+            ForwardPath([0, 0, 0, 0, 0, 0, 0, 11]),
+            17,
+        );
         ns.update(addr.clone(), node.clone());
         let res = ns.get_node(&target, 42);
         assert_eq!(res, GetNodeResult::ClosestNodes(vec![(addr, &node)]));

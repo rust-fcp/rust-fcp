@@ -1,5 +1,4 @@
 /// https://github.com/cjdelisle/cjdns/blob/cjdns-v18/wire/DataHeader.h
-
 use std::fmt;
 
 use byteorder::BigEndian;
@@ -26,8 +25,7 @@ impl DataPacket {
     pub fn new_from_raw(raw: Vec<u8>) -> Option<DataPacket> {
         if raw.len() >= 4 {
             Some(DataPacket { raw })
-        }
-        else {
+        } else {
             None
         }
     }
@@ -38,12 +36,12 @@ impl DataPacket {
             Payload::Ip6Content(next_header, ref content) => {
                 BigEndian::write_u16(&mut raw[2..4], next_header as u16);
                 raw.extend(content) // TODO: do not copy
-            },
+            }
             Payload::RoutePacket(ref route_packet) => {
                 BigEndian::write_u16(&mut raw[2..4], 256);
                 let encoded_route_packet = route_packet.clone().encode(); // TODO: do not copy
                 raw.extend(encoded_route_packet) // TODO: do not copy
-            },
+            }
         }
         DataPacket { raw: raw }
     }
@@ -69,22 +67,31 @@ impl DataPacket {
     pub fn payload(&self) -> Result<Payload, String> {
         let content_type = self.content_type();
         match content_type {
-            0..=255 => {
-                Ok(Payload::Ip6Content(content_type as u8, self.raw[4..].to_vec()))
-            }
+            0..=255 => Ok(Payload::Ip6Content(
+                content_type as u8,
+                self.raw[4..].to_vec(),
+            )),
             256 => {
                 match RoutePacket::decode(&self.raw[4..]) {
                     Ok(packet) => Ok(Payload::RoutePacket(packet)),
                     Err(e) => Err(format!("Could not decode route packet: {:?}", e)), // TODO: proper error handling
                 }
-            },
-            _ => panic!(format!("Unknown Data Packet Content-Type: {}", content_type)),
+            }
+            _ => panic!(format!(
+                "Unknown Data Packet Content-Type: {}",
+                content_type
+            )),
         }
     }
 }
 
 impl fmt::Display for DataPacket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "DataPacket(version={}, payload={:?})", self.version(), self.clone().payload())
+        write!(
+            f,
+            "DataPacket(version={}, payload={:?})",
+            self.version(),
+            self.clone().payload()
+        )
     }
 }

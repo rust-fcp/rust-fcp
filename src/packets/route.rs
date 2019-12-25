@@ -1,14 +1,14 @@
 //! Contains the `RoutePacket` structure, which is used to represent
 //! a packet exchanged by switches and routers to advertise routes.
 
-use std::collections::HashMap;
-use std::string::FromUtf8Error;
-use std::hash::{Hash, Hasher};
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::string::FromUtf8Error;
 
 use simple_bencode;
-use simple_bencode::Value as BValue;
 use simple_bencode::decoding_helpers::HelperDecodeError;
+use simple_bencode::Value as BValue;
 
 use encoding_scheme::EncodingScheme;
 use operation::{Label, LABEL_LENGTH};
@@ -30,8 +30,7 @@ impl PartialEq for NodeData {
         self.public_key == other.public_key
     }
 }
-impl Eq for NodeData {
-}
+impl Eq for NodeData {}
 
 impl Ord for NodeData {
     fn cmp(&self, other: &NodeData) -> Ordering {
@@ -93,19 +92,56 @@ impl RoutePacket {
         let bvalue = simple_bencode::decode(v);
         let mut map = match bvalue {
             Ok(BValue::Dictionary(map)) => map,
-            Ok(v) => return Err(HelperDecodeError::BadType(format!("Expected dict at root, got: {:?}", v))),
+            Ok(v) => {
+                return Err(HelperDecodeError::BadType(format!(
+                    "Expected dict at root, got: {:?}",
+                    v
+                )))
+            }
             Err(e) => return Err(HelperDecodeError::BencodeDecodeError(e)),
         };
         //println!("{:?}", map);
         //println!("{:?}", map.keys().collect::<Vec<_>>().into_iter().map(|v| String::from_utf8(v.clone()).unwrap()).collect::<Vec<String>>()); // DEBUG: to show the keys in the messages
-        let query = try!(simple_bencode::decoding_helpers::pop_value_utf8_string_option(&mut map, "q".to_owned()));
-        let encoding_index = try!(simple_bencode::decoding_helpers::pop_value_integer_option(&mut map, "ei".to_owned()));
-        let encoding_scheme = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "es".to_owned())).map(EncodingScheme::new);
-        let nodes = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "n".to_owned()));
-        let node_protocol_versions = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "np".to_owned()));
-        let target_address = try!(simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "tar".to_owned()));
-        let transaction_id = try!(simple_bencode::decoding_helpers::pop_value_bytestring(&mut map, "txid".to_owned()));
-        let protocol_version = try!(simple_bencode::decoding_helpers::pop_value_integer(&mut map, "p".to_owned()));
+        let query = try!(
+            simple_bencode::decoding_helpers::pop_value_utf8_string_option(
+                &mut map,
+                "q".to_owned()
+            )
+        );
+        let encoding_index = try!(simple_bencode::decoding_helpers::pop_value_integer_option(
+            &mut map,
+            "ei".to_owned()
+        ));
+        let encoding_scheme = try!(
+            simple_bencode::decoding_helpers::pop_value_bytestring_option(
+                &mut map,
+                "es".to_owned()
+            )
+        )
+        .map(EncodingScheme::new);
+        let nodes = try!(
+            simple_bencode::decoding_helpers::pop_value_bytestring_option(&mut map, "n".to_owned())
+        );
+        let node_protocol_versions = try!(
+            simple_bencode::decoding_helpers::pop_value_bytestring_option(
+                &mut map,
+                "np".to_owned()
+            )
+        );
+        let target_address = try!(
+            simple_bencode::decoding_helpers::pop_value_bytestring_option(
+                &mut map,
+                "tar".to_owned()
+            )
+        );
+        let transaction_id = try!(simple_bencode::decoding_helpers::pop_value_bytestring(
+            &mut map,
+            "txid".to_owned()
+        ));
+        let protocol_version = try!(simple_bencode::decoding_helpers::pop_value_integer(
+            &mut map,
+            "p".to_owned()
+        ));
         Ok(RoutePacket {
             query: query,
             encoding_index: encoding_index,
@@ -115,18 +151,24 @@ impl RoutePacket {
             target_address: target_address,
             transaction_id: transaction_id,
             protocol_version: protocol_version,
-            })
+        })
     }
 
     /// Deserialize a `RoutePacket` to its bencode representation.
     pub fn encode(self) -> Vec<u8> {
         let mut map = HashMap::new();
-        self.query.map(|q| map.insert(b"q".to_vec(), BValue::String(q.into_bytes().to_vec())));
-        self.encoding_index.map(|ei| map.insert(b"ei".to_vec(), BValue::Integer(ei)));
-        self.encoding_scheme.map(|es| map.insert(b"es".to_vec(), BValue::String(es.into_bytes())));
-        self.nodes.map(|n| map.insert(b"n".to_vec(), BValue::String(n)));
-        self.node_protocol_versions.map(|np| map.insert(b"np".to_vec(), BValue::String(np)));
-        self.target_address.map(|tar| map.insert(b"tar".to_vec(), BValue::String(tar)));
+        self.query
+            .map(|q| map.insert(b"q".to_vec(), BValue::String(q.into_bytes().to_vec())));
+        self.encoding_index
+            .map(|ei| map.insert(b"ei".to_vec(), BValue::Integer(ei)));
+        self.encoding_scheme
+            .map(|es| map.insert(b"es".to_vec(), BValue::String(es.into_bytes())));
+        self.nodes
+            .map(|n| map.insert(b"n".to_vec(), BValue::String(n)));
+        self.node_protocol_versions
+            .map(|np| map.insert(b"np".to_vec(), BValue::String(np)));
+        self.target_address
+            .map(|tar| map.insert(b"tar".to_vec(), BValue::String(tar)));
         map.insert(b"txid".to_vec(), BValue::String(self.transaction_id));
         map.insert(b"p".to_vec(), BValue::Integer(self.protocol_version));
         simple_bencode::encode(&BValue::Dictionary(map))
@@ -136,29 +178,32 @@ impl RoutePacket {
     /// and return (nb, nodes, version_length, versions), which are
     /// useful for decoding.
     fn check_nodes(&self) -> Result<(usize, &Vec<u8>, usize, &Vec<u8>), String> {
-        match (&self.nodes, &self.node_protocol_versions) { // the & are hacks to help the borrow checker by not moving the values in a tuple.
+        match (&self.nodes, &self.node_protocol_versions) {
+            // the & are hacks to help the borrow checker by not moving the values in a tuple.
             (&Some(ref nodes), &Some(ref versions)) => {
                 match versions.get(0) {
                     Some(&version_length) => {
                         let version_length = version_length as usize;
-                        if nodes.len() % (PUBLIC_KEY_LENGTH+PATH_LENGTH) != 0 {
-                            Err("Node list ('n') does not contain an integer number of items.".to_owned())
-                        }
-                        else if (versions.len()-1) % version_length != 0 {
+                        if nodes.len() % (PUBLIC_KEY_LENGTH + PATH_LENGTH) != 0 {
+                            Err(
+                                "Node list ('n') does not contain an integer number of items."
+                                    .to_owned(),
+                            )
+                        } else if (versions.len() - 1) % version_length != 0 {
                             Err("Node version list ('np') does not contain an integer number of items.".to_owned())
-                        }
-                        else if nodes.len() / (PUBLIC_KEY_LENGTH+PATH_LENGTH) != (versions.len()-1) / version_length {
+                        } else if nodes.len() / (PUBLIC_KEY_LENGTH + PATH_LENGTH)
+                            != (versions.len() - 1) / version_length
+                        {
                             Err("Length mismatch between node list ('n') and node version list ('np')".to_owned())
-                        }
-                        else {
-                            let nb = (versions.len()-1) / version_length;
+                        } else {
+                            let nb = (versions.len() - 1) / version_length;
                             Ok((nb, nodes, version_length, versions))
                         }
-                    },
+                    }
                     None => Err("Version string ('np') empty.".to_owned()),
                 }
             }
-            _ => Err("Node list ('n') and/or node version list ('np') is not provided.".to_owned())
+            _ => Err("Node list ('n') and/or node version list ('np') is not provided.".to_owned()),
         }
     }
 
@@ -169,16 +214,20 @@ impl RoutePacket {
         let mut result = Vec::new();
         result.reserve(nb);
         for i in 0..nb {
-            let node_start = i*(PUBLIC_KEY_LENGTH+PATH_LENGTH);
+            let node_start = i * (PUBLIC_KEY_LENGTH + PATH_LENGTH);
 
             let mut public_key = [0u8; PUBLIC_KEY_LENGTH];
-            public_key.copy_from_slice(&nodes[node_start..node_start+PUBLIC_KEY_LENGTH]);
+            public_key.copy_from_slice(&nodes[node_start..node_start + PUBLIC_KEY_LENGTH]);
 
             let mut path = [0u8; LABEL_LENGTH];
-            path.copy_from_slice(&nodes[node_start+PUBLIC_KEY_LENGTH..node_start+PUBLIC_KEY_LENGTH+PATH_LENGTH]);
+            path.copy_from_slice(
+                &nodes
+                    [node_start + PUBLIC_KEY_LENGTH..node_start + PUBLIC_KEY_LENGTH + PATH_LENGTH],
+            );
 
             let mut version = 0u64;
-            for j in 1+i*version_length..1+(i+1)*version_length { // 1+ is the offset caused by the first byte being decoded as 'version_length'
+            for j in 1 + i * version_length..1 + (i + 1) * version_length {
+                // 1+ is the offset caused by the first byte being decoded as 'version_length'
                 version = (version << 8) + (versions[j] as u64);
             }
 
@@ -198,11 +247,14 @@ impl RoutePacket {
         let mut node_version_bytes = vec![1u8];
         node_version_bytes.extend(nodes.iter().map(|n| n.version as u8));
 
-        let mut node_bytes = vec![0u8; nodes.len()*(PUBLIC_KEY_LENGTH+PATH_LENGTH)];
+        let mut node_bytes = vec![0u8; nodes.len() * (PUBLIC_KEY_LENGTH + PATH_LENGTH)];
         for (i, node) in nodes.iter().enumerate() {
-            let bytes_start = i*(PUBLIC_KEY_LENGTH+PATH_LENGTH);
-            node_bytes[bytes_start..bytes_start+PUBLIC_KEY_LENGTH].copy_from_slice(&node.public_key);
-            node_bytes[bytes_start+PUBLIC_KEY_LENGTH..bytes_start+PUBLIC_KEY_LENGTH+PATH_LENGTH].copy_from_slice(&node.path);
+            let bytes_start = i * (PUBLIC_KEY_LENGTH + PATH_LENGTH);
+            node_bytes[bytes_start..bytes_start + PUBLIC_KEY_LENGTH]
+                .copy_from_slice(&node.public_key);
+            node_bytes
+                [bytes_start + PUBLIC_KEY_LENGTH..bytes_start + PUBLIC_KEY_LENGTH + PATH_LENGTH]
+                .copy_from_slice(&node.path);
         }
 
         self.node_protocol_versions = Some(node_version_bytes);
@@ -229,7 +281,7 @@ impl RoutePacketBuilder {
                 target_address: None,
                 transaction_id: transaction_id,
                 protocol_version: protocol_version,
-            }
+            },
         }
     }
 
@@ -270,7 +322,6 @@ impl RoutePacketBuilder {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,9 +330,9 @@ mod tests {
     fn test_fn() {
         let s = "d1:pi18e1:q2:fn3:tar16:abcdefghhijklmno4:txid5:12345e".as_bytes();
         let m = RoutePacketBuilder::new(18, b"12345".to_vec())
-                .query("fn".to_owned())
-                .target_address(b"abcdefghhijklmno".to_vec())
-                .finalize();
+            .query("fn".to_owned())
+            .target_address(b"abcdefghhijklmno".to_vec())
+            .finalize();
 
         let s_decoded = RoutePacket::decode(s);
         let m_encoded = m.clone().encode();
@@ -294,8 +345,11 @@ mod tests {
     fn test_n() {
         let s = "d1:n80:cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde23456781:pi18e4:txid5:12345e".as_bytes();
         let m = RoutePacketBuilder::new(18, b"12345".to_vec())
-                .nodes(b"cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde2345678".to_vec())
-                .finalize();
+            .nodes(
+                b"cdefghijklmnopqrstuvwxyzabcdefghi1234567qponmlkjihgzyxwvutsrstuvwxyzabcde2345678"
+                    .to_vec(),
+            )
+            .finalize();
 
         let s_decoded = RoutePacket::decode(s);
         let m_encoded = m.clone().encode();
@@ -312,25 +366,45 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature="sfcp"))]
+    #[cfg(not(feature = "sfcp"))]
     fn test_read_write_nodes() {
-        let mut packet = RoutePacket::decode(&vec![100,50,58,101,105,105,48,101,50,58,101,115,53,58,97,20,69,129,0,49,58,110,49,50,48,58,130,223,186,81,37,25,242,89,134,192,176,47,101,127,172,39,50,222,248,255,202,29,7,104,145,198,13,140,88,35,113,111,0,0,0,0,0,0,0,21,14,212,108,34,167,28,34,202,98,134,15,159,58,151,12,228,58,163,181,163,40,102,66,125,212,44,203,100,174,56,120,61,0,0,0,0,0,0,0,19,2,134,254,75,44,62,116,254,79,92,235,47,82,76,129,250,190,138,148,250,65,218,166,83,148,144,15,83,7,157,10,20,0,0,0,0,0,0,0,1,50,58,110,112,52,58,1,18,17,18,49,58,112,105,49,56,101,52,58,116,120,105,100,52,58,98,108,97,104,101]).unwrap();
+        let mut packet = RoutePacket::decode(&vec![
+            100, 50, 58, 101, 105, 105, 48, 101, 50, 58, 101, 115, 53, 58, 97, 20, 69, 129, 0, 49,
+            58, 110, 49, 50, 48, 58, 130, 223, 186, 81, 37, 25, 242, 89, 134, 192, 176, 47, 101,
+            127, 172, 39, 50, 222, 248, 255, 202, 29, 7, 104, 145, 198, 13, 140, 88, 35, 113, 111,
+            0, 0, 0, 0, 0, 0, 0, 21, 14, 212, 108, 34, 167, 28, 34, 202, 98, 134, 15, 159, 58, 151,
+            12, 228, 58, 163, 181, 163, 40, 102, 66, 125, 212, 44, 203, 100, 174, 56, 120, 61, 0,
+            0, 0, 0, 0, 0, 0, 19, 2, 134, 254, 75, 44, 62, 116, 254, 79, 92, 235, 47, 82, 76, 129,
+            250, 190, 138, 148, 250, 65, 218, 166, 83, 148, 144, 15, 83, 7, 157, 10, 20, 0, 0, 0,
+            0, 0, 0, 0, 1, 50, 58, 110, 112, 52, 58, 1, 18, 17, 18, 49, 58, 112, 105, 49, 56, 101,
+            52, 58, 116, 120, 105, 100, 52, 58, 98, 108, 97, 104, 101,
+        ])
+        .unwrap();
         let nodes = packet.read_nodes().unwrap();
         let expected1 = NodeData {
-                public_key: [130,223,186,81,37,25,242,89,134,192,176,47,101,127,172,39,50,222,248,255,202,29,7,104,145,198,13,140,88,35,113,111],
-                path: [0, 0, 0, 0, 0, 0, 0, 0x15],
-                version: 18,
-            };
+            public_key: [
+                130, 223, 186, 81, 37, 25, 242, 89, 134, 192, 176, 47, 101, 127, 172, 39, 50, 222,
+                248, 255, 202, 29, 7, 104, 145, 198, 13, 140, 88, 35, 113, 111,
+            ],
+            path: [0, 0, 0, 0, 0, 0, 0, 0x15],
+            version: 18,
+        };
         let expected2 = NodeData {
-                public_key: [14,212,108,34,167,28,34,202,98,134,15,159,58,151,12,228,58,163,181,163,40,102,66,125,212,44,203,100,174,56,120,61],
-                path: [0, 0, 0, 0, 0, 0, 0, 0x13],
-                version: 17,
-            };
+            public_key: [
+                14, 212, 108, 34, 167, 28, 34, 202, 98, 134, 15, 159, 58, 151, 12, 228, 58, 163,
+                181, 163, 40, 102, 66, 125, 212, 44, 203, 100, 174, 56, 120, 61,
+            ],
+            path: [0, 0, 0, 0, 0, 0, 0, 0x13],
+            version: 17,
+        };
         let expected3 = NodeData {
-                public_key: [2,134,254,75,44,62,116,254,79,92,235,47,82,76,129,250,190,138,148,250,65,218,166,83,148,144,15,83,7,157,10,20],
-                path: [0, 0, 0, 0, 0, 0, 0, 0x01],
-                version: 18,
-            };
+            public_key: [
+                2, 134, 254, 75, 44, 62, 116, 254, 79, 92, 235, 47, 82, 76, 129, 250, 190, 138,
+                148, 250, 65, 218, 166, 83, 148, 144, 15, 83, 7, 157, 10, 20,
+            ],
+            path: [0, 0, 0, 0, 0, 0, 0, 0x01],
+            version: 18,
+        };
         assert_eq!(nodes.len(), 3);
         assert_eq!(nodes[0], expected1);
         assert_eq!(nodes[1], expected2);
@@ -339,7 +413,11 @@ mod tests {
         packet.write_nodes(vec![]);
         assert_eq!(packet.read_nodes().unwrap(), vec![]);
 
-        packet.write_nodes(vec![expected1.clone(), expected2.clone(), expected3.clone()]);
+        packet.write_nodes(vec![
+            expected1.clone(),
+            expected2.clone(),
+            expected3.clone(),
+        ]);
         assert_eq!(nodes.len(), 3);
         assert_eq!(nodes[0], expected1);
         assert_eq!(nodes[1], expected2);

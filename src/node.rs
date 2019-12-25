@@ -1,7 +1,7 @@
-use std::fmt;
-use std::net::Ipv6Addr;
 use std::cmp::Ordering;
+use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::net::Ipv6Addr;
 
 use simple_kbuckets::Key;
 
@@ -14,12 +14,12 @@ pub const PUBLIC_KEY_LENGTH: usize = 32;
 /// See https://github.com/cjdelisle/cjdns/blob/cjdns-v18/doc/Whitepaper.md#the-router
 fn rotate_64(i: &[u8; 16]) -> [u8; 16] {
     [
-        i[ 8], i[ 9], i[10], i[11], i[12], i[13], i[14], i[15],
-        i[ 0], i[ 1], i[ 2], i[ 3], i[ 4], i[ 5], i[ 6], i[ 7],
+        i[8], i[9], i[10], i[11], i[12], i[13], i[14], i[15], i[0], i[1], i[2], i[3], i[4], i[5],
+        i[6], i[7],
     ]
 }
 
-pub const ADDRESS_BITS: usize = 16*8;
+pub const ADDRESS_BITS: usize = 16 * 8;
 
 /// Wrapper of `Ipv6Addr` that implements `simple_kbuckets::Key`
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -29,7 +29,9 @@ pub struct Address {
 
 impl Address {
     pub fn new(bytes: &[u8; 16]) -> Address {
-        Address { bytes: rotate_64(bytes) }
+        Address {
+            bytes: rotate_64(bytes),
+        }
     }
     pub fn bytes(&self) -> [u8; 16] {
         rotate_64(&self.bytes)
@@ -77,7 +79,6 @@ impl Key for Address {
     }
 }
 
-
 /// Data of the hash table
 #[derive(Clone, Debug)]
 pub struct Node {
@@ -105,8 +106,7 @@ impl Node {
     }
 }
 
-impl Eq for Node {
-}
+impl Eq for Node {}
 impl PartialEq for Node {
     fn eq(&self, other: &Node) -> bool {
         self.public_key == other.public_key

@@ -1,10 +1,10 @@
-use std::net::{UdpSocket, SocketAddr};
 use std::collections::HashMap;
+use std::net::{SocketAddr, UdpSocket};
 
-use fcp_cryptoauth::{CAWrapper, PublicKey, SecretKey, Credentials};
+use fcp_cryptoauth::{CAWrapper, Credentials, PublicKey, SecretKey};
 
-use packets::switch::SwitchPacket;
 use operation::Director;
+use packets::switch::SwitchPacket;
 use plumbing::NetworkAdapterTrait;
 
 pub struct UdpPeer<PeerId: Clone> {
@@ -22,13 +22,12 @@ pub struct UdpAdapter<PeerId: Clone> {
 
 impl<PeerId: Clone> UdpAdapter<PeerId> {
     pub fn new(
-            sock: UdpSocket,
-            my_pk: PublicKey,
-            my_sk: SecretKey,
-            allowed_peers: HashMap<Credentials, PeerId>,
-            peers: HashMap<Director, UdpPeer<PeerId>>,
-            )
-            -> UdpAdapter<PeerId> {
+        sock: UdpSocket,
+        my_pk: PublicKey,
+        my_sk: SecretKey,
+        allowed_peers: HashMap<Credentials, PeerId>,
+        peers: HashMap<Director, UdpPeer<PeerId>>,
+    ) -> UdpAdapter<PeerId> {
         UdpAdapter {
             sock: sock,
             my_pk: my_pk,
@@ -40,8 +39,11 @@ impl<PeerId: Clone> UdpAdapter<PeerId> {
 
     // Find what interface a UDP packet is coming from, using its emitted
     // IP address.
-    fn get_incoming_director_and_open(&mut self, from_addr: SocketAddr, datagram: Vec<u8>)
-            -> (Director, Vec<Vec<u8>>) {
+    fn get_incoming_director_and_open(
+        &mut self,
+        from_addr: SocketAddr,
+        datagram: Vec<u8>,
+    ) -> (Director, Vec<Vec<u8>>) {
         for (director, peer) in self.peers.iter_mut() {
             if peer.addr == from_addr {
                 let messages = peer.ca_session.unwrap_message(datagram).unwrap();
@@ -50,21 +52,44 @@ impl<PeerId: Clone> UdpAdapter<PeerId> {
         }
 
         // Not a known interface; create one
-        let director = (0..0b1000).filter(|candidate|
-            candidate & 0b1111 != 0b0001 && // Check it is not an alias to the self-interface
+        let director = (0..0b1000)
+            .filter(|candidate| {
+                candidate & 0b1111 != 0b0001 && // Check it is not an alias to the self-interface
             !self.peers.contains_key(&candidate)
-        ).next().unwrap();
-        let (ca_session, message) = CAWrapper::new_incoming_connection(self.my_pk.clone(), self.my_sk.clone(), Credentials::None, Some(self.allowed_peers.clone()), None, datagram).unwrap();
-        let peer = UdpPeer { ca_session: ca_session, addr: from_addr };
+            })
+            .next()
+            .unwrap();
+        let (ca_session, message) = CAWrapper::new_incoming_connection(
+            self.my_pk.clone(),
+            self.my_sk.clone(),
+            Credentials::None,
+            Some(self.allowed_peers.clone()),
+            None,
+            datagram,
+        )
+        .unwrap();
+        let peer = UdpPeer {
+            ca_session: ca_session,
+            addr: from_addr,
+        };
         self.peers.insert(director, peer);
         (director, vec![message])
     }
 
     /// Called when a UDP packet is received.
-    fn on_outer_ca_message(&mut self, from_addr: SocketAddr, datagram: Vec<u8>)
-            -> (Director, Vec<SwitchPacket>) {
+    fn on_outer_ca_message(
+        &mut self,
+        from_addr: SocketAddr,
+        datagram: Vec<u8>,
+    ) -> (Director, Vec<SwitchPacket>) {
         let (director, messages) = self.get_incoming_director_and_open(from_addr, datagram);
-        (director, messages.into_iter().map(|raw| SwitchPacket { raw: raw }).collect())
+        (
+            director,
+            messages
+                .into_iter()
+                .map(|raw| SwitchPacket { raw: raw })
+                .collect(),
+        )
     }
 }
 
@@ -92,8 +117,6 @@ impl<PeerId: Clone> NetworkAdapterTrait for UdpAdapter<PeerId> {
         self.peers.keys().cloned().collect()
     }
     fn get_pk(&self, dir: Director) -> Option<&PublicKey> {
-        self.peers.get(&dir).map(|peer|
-            peer.ca_session.their_pk()
-        )
+        self.peers.get(&dir).map(|peer| peer.ca_session.their_pk())
     }
 }
