@@ -102,7 +102,7 @@ impl Router {
 }
 
 impl RouterTrait for Router {
-    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, handle: MySessionHandle, pk: PublicKey) -> Vec<RoutePacket> {
+    fn on_route_packet(&mut self, packet: &RoutePacket, path: BackwardPath, _handle: MySessionHandle, pk: PublicKey) -> Vec<RoutePacket> {
         let responses = match packet.query.as_ref().map(String::as_ref) {
             Some("gp") => self.on_getpeers(packet, &pk),
             _ => Vec::new(),

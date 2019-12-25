@@ -83,7 +83,7 @@ impl SwitchPacket {
 
     /// Returns a new packet, constructed as a reply of a received one.
     pub fn new_reply(received: &SwitchPacket, payload: Payload) -> SwitchPacket {
-        let mut path = BackwardPath::from(received.label()).reverse();
+        let path = BackwardPath::from(received.label()).reverse();
         SwitchPacket::new(path, payload)
     }
 

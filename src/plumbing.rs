@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::net::Ipv6Addr;
 
-use fcp_cryptoauth::{PublicKey, publickey_to_ipv6addr, Credentials};
+use fcp_cryptoauth::{PublicKey, publickey_to_ipv6addr};
 
 use passive_switch::PassiveSwitch;
 use packets::switch::SwitchPacket;
@@ -12,15 +12,15 @@ use packets::control::ControlPacket;
 use session_manager::SessionManager;
 use packets::data::DataPacket;
 use packets::data::Payload as DataPayload;
-use utils::{new_from_raw_content, make_reply};
-use session_manager::{MySessionHandle, TheirSessionHandle, SessionHandle};
+use utils::{new_from_raw_content};
+use session_manager::MySessionHandle;
 
 pub const DATAPACKET_VERSION: u8 = 1;
 
 pub struct Ip6Content {
-    addr: Ipv6Addr,
-    next_header: u8,
-    content: Vec<u8>,
+    pub addr: Ipv6Addr,
+    pub next_header: u8,
+    pub content: Vec<u8>,
 }
 
 pub trait RouterTrait {
@@ -178,7 +178,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
     }
 
     pub fn send_hello(&mut self, path: ForwardPath, pk: PublicKey) {
-        let my_handle = self.session_manager.add_outgoing(Some(path), pk);
+        let _my_handle = self.session_manager.add_outgoing(Some(path), pk);
         self.upkeep2();
     }
 
@@ -204,7 +204,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
         }
     }
 
-    pub fn send_content(&mut self, ip6_content: &Ip6Content) {
+    pub fn send_content(&mut self, _ip6_content: &Ip6Content) {
         unimplemented!("send_content");
     }
 }

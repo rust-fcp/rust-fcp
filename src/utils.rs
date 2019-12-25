@@ -2,7 +2,7 @@ use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use fcp_cryptoauth::CAWrapper;
 
-use operation::{ForwardPath, BackwardPath, reverse_label};
+use operation::{ForwardPath, BackwardPath};
 use packets::switch::SwitchPacket;
 use packets::switch::Payload as SwitchPayload;
 use session_manager::{SessionHandle, TheirSessionHandle};

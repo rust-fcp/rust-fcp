@@ -104,7 +104,7 @@ impl SessionManager {
     }
 
     pub fn get_session_for_pk(&mut self, pk: PublicKey) -> Option<&mut Session> {
-        for (handle, session) in self.sessions.iter_mut() {
+        for (_handle, session) in self.sessions.iter_mut() {
             if *session.conn.their_pk() == pk {
                 return Some(session)
             }
@@ -138,5 +138,4 @@ impl SessionManager {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 }

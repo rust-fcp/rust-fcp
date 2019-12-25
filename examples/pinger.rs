@@ -16,15 +16,14 @@ use fcp::packets::switch::SwitchPacket;
 use fcp::packets::switch::Payload as SwitchPayload;
 use fcp::operation::{Director, ForwardPath};
 use fcp::packets::control::ControlPacket;
-use fcp::packets::route::{RoutePacket, RoutePacketBuilder, NodeData};
+use fcp::packets::route::RoutePacketBuilder;
 use fcp::packets::data::DataPacket;
 use fcp::packets::data::Payload as DataPayload;
 use fcp::encoding_scheme::{EncodingScheme, EncodingSchemeForm};
 use fcp::passive_switch::PassiveSwitch;
 use fcp::udp_adapter::{UdpAdapter, UdpPeer};
-use fcp::utils::{make_reply, new_from_raw_content};
 use fcp::plumbing::Plumbing;
-use fcp::session_manager::{SessionManager, MySessionHandle, TheirSessionHandle};
+use fcp::session_manager::{SessionManager, MySessionHandle};
 use fcp::plumbing::NetworkAdapterTrait;
 
 use fcp::node::{Address, Node};
@@ -64,7 +63,7 @@ impl Pinger {
     }
 
     /// Sometimes (random) sends a switch as a reply to the packet.
-    fn random_send_switch_ping(&mut self, my_handle: MySessionHandle, path: ForwardPath) {
+    fn random_send_switch_ping(&mut self, _my_handle: MySessionHandle, path: ForwardPath) {
         if rand::thread_rng().next_u32() > 0xafffffff {
             let ping = ControlPacket::Ping { version: 18, opaque_data: vec![1, 2, 3, 4, 5, 6, 7, 8] };
             let packet_response = SwitchPacket::new(path, SwitchPayload::Control(ping));
@@ -161,7 +160,7 @@ impl Pinger {
 
     fn loop_(&mut self) {
         loop {
-            let mut packets = self.plumbing.session_manager.upkeep();
+            let packets = self.plumbing.session_manager.upkeep();
             for packet in packets {
                 self.plumbing.dispatch(packet, 0b001);
             }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use fcp_cryptoauth::{CAWrapper, PublicKey, SecretKey, Credentials};
+use fcp_cryptoauth::{PublicKey, SecretKey, Credentials};
 
 use operation::{RoutingDecision, Director};
 use packets::switch::SwitchPacket;
