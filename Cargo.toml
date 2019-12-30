@@ -14,11 +14,10 @@ sfcp = []
 [dependencies]
 fcp_cryptoauth = { git = "https://github.com/rust-fcp/rust-fcp-cryptoauth.git" }
 byteorder = { version = "^1.1.0", features = ["i128"] }
-hex = ">=0.2.0,<0.4.0"
+hex = "^0.2.0"
 simple_bencode = "^0.1.4"
 simple_kbuckets = "^0.2.0"
 rand = "^0.3.15"
 
 [dev-dependencies]
 byteorder = "^1.1.0"
-hex = "*"
