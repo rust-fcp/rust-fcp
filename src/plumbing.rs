@@ -229,7 +229,6 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
 
         for message in messages {
             let switch_packet = new_from_raw_content(path, message, their_handle);
-            println!("{:?}", switch_packet);
             self.dispatch(switch_packet, 0b001);
         }
     }
