@@ -105,12 +105,12 @@ impl<PeerId: Clone> NetworkAdapterTrait for UdpAdapter<PeerId> {
         }
     }
 
-    fn recv_from(&mut self) -> (Director, Vec<SwitchPacket>) {
+    fn recv_from(&mut self) -> Option<(Director, Vec<SwitchPacket>)> {
         let mut datagram = vec![0u8; 4096];
         let (nb_bytes, addr) = self.sock.recv_from(&mut datagram).unwrap();
         assert!(nb_bytes < 4096);
         datagram.truncate(nb_bytes);
-        self.on_outer_ca_message(addr, datagram)
+        Some(self.on_outer_ca_message(addr, datagram))
     }
 
     fn directors(&self) -> Vec<Director> {

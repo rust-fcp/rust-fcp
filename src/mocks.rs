@@ -23,13 +23,13 @@ impl NetworkAdapterTrait for MockNetworkAdapter {
         })
     }
 
-    fn recv_from(&mut self) -> (Director, Vec<SwitchPacket>) {
+    fn recv_from(&mut self) -> Option<(Director, Vec<SwitchPacket>)> {
         for (dir, queue) in self.in_queues.iter() {
             if let Some(pkt) = queue.borrow_mut().pop_front() {
-                return (*dir, vec![pkt]);
+                return Some((*dir, vec![pkt]));
             }
         }
-        panic!("No packet");
+        None
     }
 
     fn directors(&self) -> Vec<Director> {

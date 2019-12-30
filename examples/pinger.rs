@@ -216,9 +216,10 @@ impl Pinger {
 
             self.random_ping_node();
 
-            let (director, messages) = self.plumbing.network_adapter.recv_from();
-            for message in messages.into_iter() {
-                self.dispatch(message, director);
+            if let Some((director, messages)) = self.plumbing.network_adapter.recv_from() {
+                for message in messages.into_iter() {
+                    self.dispatch(message, director);
+                }
             }
         }
     }

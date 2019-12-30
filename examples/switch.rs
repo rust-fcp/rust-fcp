@@ -137,9 +137,10 @@ impl UdpSwitch {
                 self.random_send_getpeers(my_handle, path)
             }
 
-            let (director, messages) = self.plumbing.network_adapter.recv_from();
-            for message in messages.into_iter() {
-                self.dispatch(message, director);
+            if let Some((director, messages)) = self.plumbing.network_adapter.recv_from() {
+                for message in messages.into_iter() {
+                    self.dispatch(message, director);
+                }
             }
         }
     }

@@ -37,7 +37,7 @@ pub trait RouterTrait {
 
 pub trait NetworkAdapterTrait {
     fn send_to(&mut self, to: Director, packet: &SwitchPacket);
-    fn recv_from(&mut self) -> (Director, Vec<SwitchPacket>);
+    fn recv_from(&mut self) -> Option<(Director, Vec<SwitchPacket>)>;
 
     fn directors(&self) -> Vec<Director>;
     fn get_pk(&self, dir: Director) -> Option<&PublicKey>;
@@ -187,11 +187,12 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
     }
 
     pub fn upkeep(&mut self) -> Vec<(MySessionHandle, Vec<DataPacket>)> {
-        let (director, messages) = self.network_adapter.recv_from();
         let mut to_self = Vec::new();
-        for message in messages.into_iter() {
-            if let Some(pkts) = self.dispatch(message, director) {
-                to_self.push(pkts);
+        if let Some((director, messages)) = self.network_adapter.recv_from() {
+            for message in messages.into_iter() {
+                if let Some(pkts) = self.dispatch(message, director) {
+                    to_self.push(pkts);
+                }
             }
         }
         self.upkeep2();
