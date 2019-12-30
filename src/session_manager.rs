@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use fcp_cryptoauth::{peek_pk_key, CAWrapper, Credentials, PublicKey, SecretKey};
 use rand;
@@ -24,6 +25,12 @@ pub struct TheirSessionHandle(pub SessionHandle);
 pub struct Session {
     pub path: Option<ForwardPath>,
     pub conn: CAWrapper<()>,
+}
+
+impl fmt::Debug for Session {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Session {{ path: {:?} }}", self.path)
+    }
 }
 
 impl Session {
