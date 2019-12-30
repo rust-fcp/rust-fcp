@@ -7,6 +7,7 @@ use operation::{BackwardPath, Director, ForwardPath};
 use packets::control::ControlPacket;
 use packets::data::DataPacket;
 use packets::data::Payload as DataPayload;
+use packets::data::DATAPACKET_VERSION;
 use packets::route::RoutePacket;
 use packets::switch::Payload as SwitchPayload;
 use packets::switch::SwitchPacket;
@@ -14,8 +15,6 @@ use passive_switch::PassiveSwitch;
 use session_manager::MySessionHandle;
 use session_manager::SessionManager;
 use utils::new_from_raw_content;
-
-pub const DATAPACKET_VERSION: u8 = 1;
 
 pub struct Ip6Content {
     pub addr: Ipv6Addr,
@@ -149,15 +148,7 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
                 ),
             };
             for route_packet in route_packets.into_iter() {
-                let getpeers_response =
-                    DataPacket::new(DATAPACKET_VERSION, &DataPayload::RoutePacket(route_packet));
-                responses.extend(
-                    session
-                        .conn
-                        .wrap_message_immediately(&getpeers_response.raw())
-                        .into_iter()
-                        .map(|r| new_from_raw_content(path.reverse(), r, session.their_handle())),
-                );
+                responses.extend(session.wrap_route_packet(path.reverse(), route_packet));
             }
         }
         for response in responses {

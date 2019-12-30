@@ -6,6 +6,8 @@ use byteorder::ByteOrder;
 
 use packets::route::RoutePacket;
 
+pub const DATAPACKET_VERSION: u8 = 1;
+
 /// https://github.com/cjdelisle/cjdns/blob/cjdns-v20/wire/ContentType.h#L18
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Payload {

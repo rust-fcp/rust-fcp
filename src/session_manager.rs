@@ -6,6 +6,9 @@ use rand::Rng;
 
 use operation::{BackwardPath, ForwardPath};
 use packets::data::DataPacket;
+use packets::data::Payload as DataPayload;
+use packets::data::DATAPACKET_VERSION;
+use packets::route::RoutePacket;
 use packets::switch::SwitchPacket;
 use utils::new_from_raw_content;
 
@@ -29,6 +32,21 @@ impl Session {
             .peer_session_handle()
             .map(SessionHandle)
             .map(TheirSessionHandle)
+    }
+
+    pub fn wrap_route_packet(
+        &mut self,
+        path: ForwardPath,
+        route_packet: RoutePacket,
+    ) -> Vec<SwitchPacket> {
+        let data_packet =
+            DataPacket::new(DATAPACKET_VERSION, &DataPayload::RoutePacket(route_packet));
+
+        self.conn
+            .wrap_message_immediately(&data_packet.raw())
+            .into_iter()
+            .map(|r| new_from_raw_content(path, r, self.their_handle()))
+            .collect()
     }
 }
 
