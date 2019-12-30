@@ -161,20 +161,25 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
         packet: SwitchPacket,
         from_interface: Director,
     ) -> Option<(MySessionHandle, Vec<DataPacket>)> {
-        let path = BackwardPath::from(packet.label());
         let (to_self, forward) = self.switch.forward(packet, from_interface);
         for (interface, packet) in forward {
             self.network_adapter.send_to(interface, &packet)
         }
 
-        to_self
-            .and_then(|packet| self.on_self_interface_switch_packet(&packet))
-            .map(|(handle, packets)| {
+        if let Some(packet) = to_self.as_ref() {
+            let switched_path = BackwardPath(packet.label());
+
+            if let Some((handle, packets)) = self.on_self_interface_switch_packet(&packet) {
                 for packet in packets.iter() {
-                    self.on_data_packet(&packet, handle, path)
+                    self.on_data_packet(&packet, handle, switched_path)
                 }
-                (handle, packets)
-            })
+                Some((handle, packets))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     pub fn upkeep(&mut self) -> Vec<(MySessionHandle, Vec<DataPacket>)> {
