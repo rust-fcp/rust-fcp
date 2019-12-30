@@ -2,8 +2,13 @@
 //! used by the Switch, as defined by
 //! https://github.com/cjdelisle/cjdns/blob/cjdns-v18/doc/Whitepaper.md#in-memory-representation
 
+use std::fmt;
+
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
+use hex::ToHex;
+
+use fcp_cryptoauth::handshake_packet::HandshakePacket;
 
 use operation::{
     reverse_label, switch, BackwardPath, Director, ForwardPath, Label, RoutingDecision,
@@ -12,7 +17,6 @@ use operation::{
 use packets::control::ControlPacket;
 use session_manager::SessionHandle;
 
-#[derive(Debug)]
 pub enum Payload {
     Control(ControlPacket),
     CryptoAuthHello(Vec<u8>),
@@ -20,7 +24,32 @@ pub enum Payload {
     CryptoAuthData(SessionHandle, Vec<u8>),
 }
 
-#[derive(Debug)]
+impl fmt::Debug for Payload {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Payload::Control(packet) => f
+                .write_str("Payload::Control(")
+                .and_then(|_| packet.fmt(f))
+                .and_then(|_| f.write_str(")")),
+            Payload::CryptoAuthHello(raw) => {
+                let packet = HandshakePacket { raw: raw.to_vec() };
+                f.write_str("Payload::CryptoAuthHello(")
+                    .and_then(|_| packet.fmt(f))
+                    .and_then(|_| f.write_str(")"))
+            }
+            Payload::CryptoAuthKey(raw) => {
+                let packet = HandshakePacket { raw: raw.to_vec() };
+                f.write_str("Payload::CryptoAuthHello(")
+                    .and_then(|_| packet.fmt(f))
+                    .and_then(|_| f.write_str(")"))
+            }
+            Payload::CryptoAuthData(handle, raw) => {
+                write!(f, "Payload::CryptoAuthData({:?}, {:?})", handle, raw)
+            }
+        }
+    }
+}
+
 pub struct SwitchPacket {
     pub raw: Vec<u8>,
 }
@@ -184,6 +213,17 @@ impl SwitchPacket {
         let mut label = [0u8; LABEL_LENGTH];
         reverse_label(&mut label);
         self.raw[0..LABEL_LENGTH].copy_from_slice(&label);
+    }
+}
+
+impl fmt::Debug for SwitchPacket {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("SwitchPacket")
+            .field("raw", &self.raw.to_vec().to_hex())
+            .field("label", &self.label())
+            .field("version", &self.version())
+            .field("payload", &self.payload())
+            .finish()
     }
 }
 
