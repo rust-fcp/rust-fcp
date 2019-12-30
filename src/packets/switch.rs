@@ -218,12 +218,15 @@ impl SwitchPacket {
 
 impl fmt::Debug for SwitchPacket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("SwitchPacket")
-            .field("raw", &self.raw.to_vec().to_hex())
+        let mut ds = f.debug_struct("SwitchPacket");
+        let ds = ds.field("raw", &self.raw.to_vec().to_hex())
             .field("label", &self.label())
-            .field("version", &self.version())
-            .field("payload", &self.payload())
-            .finish()
+            .field("payload", &self.payload());
+
+        #[cfg(not(feature = "sfcp"))]
+        let ds = ds.field("version", &self.version());
+
+        ds.finish()
     }
 }
 

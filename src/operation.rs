@@ -69,7 +69,10 @@ impl ForwardPath {
     /// ```
     /// # use fcp::operation::*;
     /// let label = 0b0001_010;
+    /// #[cfg(not(feature = "sfcp"))]
     /// assert_eq!(u64_from_label(ForwardPath::from_director(3, 0b010).0), label);
+    /// #[cfg(feature = "sfcp")]
+    /// assert_eq!(u128_from_label(ForwardPath::from_director(3, 0b010).0), label);
     /// ```
     #[inline(always)]
     pub fn from_director(director_length: u8, director: Director) -> ForwardPath {
@@ -80,7 +83,7 @@ impl ForwardPath {
         #[cfg(not(feature = "sfcp"))]
         BigEndian::write_u64(&mut label[LABEL_LENGTH - 8..LABEL_LENGTH], path);
         #[cfg(feature = "sfcp")]
-        BigEndian::write_u128(&mut label[LABEL_LENGTH - 8..LABEL_LENGTH], path);
+        BigEndian::write_u128(&mut label[LABEL_LENGTH - 16..LABEL_LENGTH], path);
 
         ForwardPath(label)
     }
