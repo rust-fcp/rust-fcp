@@ -3,6 +3,7 @@ use std::net::Ipv6Addr;
 
 use fcp_cryptoauth::{publickey_to_ipv6addr, PublicKey};
 
+use operation::LABEL_LENGTH;
 use operation::{BackwardPath, Director, ForwardPath};
 use packets::control::ControlPacket;
 use packets::data::DataPacket;
@@ -152,6 +153,11 @@ impl<Router: RouterTrait, NetworkAdapter: NetworkAdapterTrait> Plumbing<Router, 
             }
         }
         for response in responses {
+            assert_ne!(
+                response.label()[LABEL_LENGTH - 1] & 0b111,
+                0b001,
+                "Sending response to myself"
+            );
             self.dispatch(response, 0b001);
         }
     }

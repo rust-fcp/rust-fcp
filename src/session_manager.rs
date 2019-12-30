@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use fcp_cryptoauth::keys::ToBase32;
 use fcp_cryptoauth::{peek_pk_key, CAWrapper, Credentials, PublicKey, SecretKey};
 use rand;
 use rand::Rng;
@@ -92,6 +93,13 @@ impl SessionManager {
         path: Option<ForwardPath>,
         node_pk: PublicKey,
     ) -> MySessionHandle {
+        assert!(
+            node_pk != self.my_pk,
+            format!(
+                "Tried to add outgoing connection to myself ({}).",
+                self.my_pk.to_base32()
+            )
+        );
         let handle = self.gen_handle();
         let conn = CAWrapper::new_outgoing_connection(
             self.my_pk.clone(),
@@ -118,6 +126,14 @@ impl SessionManager {
         packet: Vec<u8>,
         switch_packet: &SwitchPacket,
     ) -> (MySessionHandle, Vec<u8>) {
+        let pk: PublicKey = peek_pk_key(&packet[..]).expect("Invalid Hello packet.");
+        assert!(
+            pk != self.my_pk,
+            format!(
+                "Got an Hello packet from myself ({}).",
+                self.my_pk.to_base32()
+            )
+        );
         let handle = self.gen_handle();
         let (conn, message) = CAWrapper::new_incoming_connection(
             self.my_pk,
@@ -145,10 +161,14 @@ impl SessionManager {
         switch_packet: &SwitchPacket,
     ) -> (MySessionHandle, Vec<DataPacket>) {
         let pk: PublicKey = peek_pk_key(&packet[..]).expect("Invalid Key packet.");
-        let my_handle = *self
-            .pk_to_my_handle
-            .get(&pk)
-            .expect("Got Key message from a node I never sent a Hello to.");
+        assert!(
+            pk != self.my_pk,
+            format!("Got a Key packet from myself ({}).", self.my_pk.to_base32())
+        );
+        let my_handle = *self.pk_to_my_handle.get(&pk).expect(&format!(
+            "Got Key message from a node I never sent a Hello to: {}.",
+            pk.to_base32()
+        ));
         let path = BackwardPath::from(switch_packet.label()).reverse();
         self.sessions
             .get_mut(&my_handle)
