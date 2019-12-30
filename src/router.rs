@@ -13,6 +13,7 @@ use plumbing::RouterTrait;
 use session_manager::MySessionHandle;
 
 const PROTOCOL_VERSION: i64 = 18;
+const DIRECTOR_LENGTH: u8 = 3;
 
 /// Wrapper of `NodeStore` that reads/writes network packets.
 /// TODO: Check paths are valid before inserting them (eg. send a
@@ -92,7 +93,7 @@ impl Router {
         }
         for (&director, pk) in self.peers.iter() {
             if pk != requester_pk {
-                let path = ForwardPath::from(director);
+                let path = ForwardPath::from_director(DIRECTOR_LENGTH, director);
                 nodes.push(NodeData {
                     public_key: pk.0,
                     path: path.into(),

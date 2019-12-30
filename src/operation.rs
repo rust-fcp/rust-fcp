@@ -62,15 +62,26 @@ impl ForwardPath {
         reverse_label(&mut self.0);
         BackwardPath(self.0)
     }
-}
-impl From<Director> for ForwardPath {
+
+    /// Takes a director (interface identifier for a direct peer), and returns
+    /// a `ForwardPath` to the self-interface of the peer.
+    ///
+    /// ```
+    /// # use fcp::operation::*;
+    /// let label = 0b0001_010;
+    /// assert_eq!(u64_from_label(ForwardPath::from_director(3, 0b010).0), label);
+    /// ```
     #[inline(always)]
-    fn from(path: Director) -> ForwardPath {
+    pub fn from_director(director_length: u8, director: Director) -> ForwardPath {
+        assert!((director_length as usize) + 4 <= LABEL_LENGTH, "Director is too long");
+        let path = director | 0b0001 << director_length; // Add a self-interface
+
         let mut label = [0; LABEL_LENGTH];
         #[cfg(not(feature = "sfcp"))]
         BigEndian::write_u64(&mut label[LABEL_LENGTH - 8..LABEL_LENGTH], path);
         #[cfg(feature = "sfcp")]
         BigEndian::write_u128(&mut label[LABEL_LENGTH - 8..LABEL_LENGTH], path);
+
         ForwardPath(label)
     }
 }
