@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt;
 
 use fcp_cryptoauth::keys::ToBase32;
 use fcp_cryptoauth::{peek_pk_key, CAWrapper, Credentials, PublicKey, SecretKey};
@@ -23,15 +22,10 @@ pub struct MySessionHandle(pub SessionHandle);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TheirSessionHandle(pub SessionHandle);
 
+#[derive(Debug)]
 pub struct Session {
     pub path: Option<ForwardPath>,
     pub conn: CAWrapper<()>,
-}
-
-impl fmt::Debug for Session {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Session {{ path: {:?} }}", self.path)
-    }
 }
 
 impl Session {
